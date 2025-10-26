@@ -107,10 +107,15 @@ async function uploadMediaToStrava(mediaPaths) {
     }
   }
   
-  // Fall back to file system (for local development)
-  if (!sessionData && fs.existsSync(path.join(SESSION_DIR, 'state.json'))) {
+  // Fall back to file system (for local development and Railway volumes)
+  // Check volume mount path first (/sessions), then relative path
+  const volumePath = '/sessions/state.json';
+  if (!sessionData && fs.existsSync(volumePath)) {
+    sessionData = JSON.parse(fs.readFileSync(volumePath, 'utf8'));
+    console.log('✅ Session loaded from volume');
+  } else if (!sessionData && fs.existsSync(path.join(SESSION_DIR, 'state.json'))) {
     sessionData = JSON.parse(fs.readFileSync(path.join(SESSION_DIR, 'state.json'), 'utf8'));
-    console.log('✅ Session loaded from file');
+    console.log('✅ Session loaded from relative path');
   }
 
   // Launch browser - either locally or via Browserless.io
