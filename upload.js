@@ -54,32 +54,44 @@ async function uploadMediaToStrava(mediaPaths) {
   const page = await context.newPage();
 
   try {
-    // Check if we're already logged in by looking at the page
+    // Navigate to a page that requires authentication to check login status
     console.log('🔍 Checking login status...');
-    await page.goto(`${STRAVA_URL}/athlete`);
+    await page.goto(`${STRAVA_URL}/athlete/training`);
 
-    // Wait a bit to see if we're redirected or if we land on the athlete page
+    // Wait for navigation
     await page.waitForTimeout(3000);
 
     let currentUrl = page.url();
     console.log(`📍 Current URL: ${currentUrl}`);
 
-    // If we're not on the athlete page or we're redirected to login
+    // If we're redirected to login, we need to log in
     if (currentUrl.includes('login')) {
       console.log('❌ Not logged in. Please log in manually in the browser.');
-      console.log('⏳ The browser window will stay open for 60 seconds...');
-      console.log('💡 Log in, navigate to your dashboard, then the script will continue');
-      console.log('💡 Take your time!');
+      console.log('💡 Log in to Strava in the browser window and wait for it to load your dashboard');
+      console.log('⏳ Waiting for you to complete login...');
+      console.log('💡 This will check every 5 seconds for up to 2 minutes');
       
-      await page.waitForTimeout(60000); // Wait 60 seconds for login
+      // Wait for login by checking if URL changes from login page
+      let loggedIn = false;
+      for (let attempt = 0; attempt < 24; attempt++) { // Check for 2 minutes (24 * 5s)
+        await page.waitForTimeout(5000);
+        
+        // Check current URL without navigating away
+        currentUrl = page.url();
+        
+        if (!currentUrl.includes('login')) {
+          loggedIn = true;
+          console.log('✅ Login successful!');
+          break;
+        }
+        
+        if (attempt % 6 === 0 && attempt > 0) {
+          console.log(`⏳ Still waiting for login... (${attempt * 5}s elapsed)`);
+        }
+      }
       
-      // Check again if we're logged in now
-      await page.goto(`${STRAVA_URL}/athlete`);
-      await page.waitForTimeout(3000);
-      currentUrl = page.url();
-      
-      if (currentUrl.includes('login')) {
-        console.log('❌ Still not logged in. Please run the script again and log in when prompted.');
+      if (!loggedIn) {
+        console.log('❌ Login timeout. Please run the script again.');
         await browser.close();
         return;
       }
@@ -89,25 +101,8 @@ async function uploadMediaToStrava(mediaPaths) {
       console.log('✅ Session saved!');
     }
 
-    // Navigate to athlete activities
-    console.log('📊 Navigating to activity feed...');
-    await page.goto(`${STRAVA_URL}/athlete/training`);
-
-    // Wait for navigation
-    await page.waitForTimeout(3000);
-
-    // DEBUG: Log page content to understand structure
-    console.log('🔍 Debugging: Checking page elements...');
-    const url = page.url();
-    console.log(`📍 Current URL: ${url}`);
-    
-    // Check if we got redirected to login
-    if (url.includes('login')) {
-      console.log('❌ Redirected to login page - please log in and run again');
-      console.log('💡 Or we can add better session handling here');
-      await browser.close();
-      return;
-    }
+    // Now we're logged in, let's continue with the activity feed
+    console.log('📊 Connected! Looking for your activities...');
 
     // Wait for activities to load
     await page.waitForSelector('[data-testid="activity-card"]', { timeout: 10000 }).catch(() => {
@@ -166,35 +161,49 @@ async function uploadMediaToStrava(mediaPaths) {
     // Wait for activity detail page to load
     await page.waitForTimeout(randomDelay(2000, 4000));
 
-    // Look for edit button
+    // Look for edit button (pencil icon)
     console.log('✏️  Looking for edit button...');
     
     // Try multiple possible selectors for the edit button
+    // Priority: pencil icon button, then text-based buttons
     const editButtonSelectors = [
+      'button[title*="Edit"], button[aria-label*="Edit"]',  // Pencil icon buttons
+      'button svg[class*="pencil"], button svg[class*="edit"]',  // Buttons with pencil SVG
+      'a[href*="/edit"]',  // Edit link
       'button:has-text("Edit")',
-      'a:has-text("Edit")',
       '[aria-label="Edit activity"]',
-      '.edit-button',
       'button[class*="edit"]'
     ];
 
     let editButtonClicked = false;
     for (const selector of editButtonSelectors) {
       try {
-        const editButton = await page.locator(selector).first();
-        if (await editButton.isVisible({ timeout: 2000 })) {
-          await editButton.click();
-          editButtonClicked = true;
-          console.log(`✅ Found edit button with selector: ${selector}`);
-          break;
+        const editButtons = await page.locator(selector).all();
+        for (const editButton of editButtons) {
+          if (await editButton.isVisible({ timeout: 1000 })) {
+            // Check if it's not the "more options" menu button
+            const text = await editButton.textContent();
+            const ariaLabel = await editButton.getAttribute('aria-label');
+            
+            // Skip if it's a "more options" menu
+            if (text?.includes('More') || ariaLabel?.includes('More')) {
+              continue;
+            }
+            
+            await editButton.click();
+            editButtonClicked = true;
+            console.log(`✅ Found edit button with selector: ${selector}`);
+            break;
+          }
         }
+        if (editButtonClicked) break;
       } catch (e) {
         // Try next selector
       }
     }
 
     if (!editButtonClicked) {
-      console.log('⚠️  Edit button not found automatically. Please click it manually in the browser.');
+      console.log('⚠️  Edit button not found automatically. Please click the PENCIL icon manually in the browser.');
       await page.waitForTimeout(5000);
     }
 
@@ -253,7 +262,44 @@ async function uploadMediaToStrava(mediaPaths) {
 
     // Wait for uploads to complete
     console.log('⏳ Waiting for uploads to complete...');
-    await page.waitForTimeout(UPLOAD_TIMEOUT);
+    
+    // Wait for upload progress indicators to disappear
+    let uploadComplete = false;
+    for (let attempt = 0; attempt < 60; attempt++) { // Check for up to 60 seconds
+      await page.waitForTimeout(1000);
+      
+      // Check if upload indicators are gone
+      const uploadIndicators = await page.locator('[class*="upload"], [class*="progress"], [class*="loading"]').all();
+      
+      let hasActiveUpload = false;
+      for (const indicator of uploadIndicators) {
+        const isVisible = await indicator.isVisible();
+        const text = await indicator.textContent();
+        
+        // Check for upload-related text
+        if (isVisible && (text?.includes('uploading') || text?.includes('processing'))) {
+          hasActiveUpload = true;
+          break;
+        }
+      }
+      
+      if (!hasActiveUpload && attempt > 2) { // Wait at least 3 seconds
+        uploadComplete = true;
+        console.log('✅ Upload appears to be complete');
+        break;
+      }
+      
+      if (attempt === 10 || attempt === 30) {
+        console.log(`⏳ Still uploading... (${attempt + 1}s elapsed)`);
+      }
+    }
+    
+    if (!uploadComplete) {
+      console.log('⚠️  Upload timeout or still processing. Proceeding...');
+    }
+    
+    // Give it a bit more time to ensure everything is ready
+    await page.waitForTimeout(2000);
 
     // Look for save button
     console.log('💾 Looking for save button...');
