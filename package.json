@@ -1,0 +1,23 @@
+{
+  "name": "strava-media-uploader",
+  "version": "1.0.0",
+  "description": "Automated media uploader for Strava activities using Playwright",
+  "main": "upload.js",
+  "scripts": {
+    "start": "node upload.js",
+    "upload": "node upload.js"
+  },
+  "keywords": [
+    "strava",
+    "media",
+    "upload",
+    "automation",
+    "playwright"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}
+
