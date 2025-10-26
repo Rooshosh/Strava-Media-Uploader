@@ -1,6 +1,9 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
+const { URL } = require('url');
 
 // Configuration
 const STRAVA_URL = 'https://www.strava.com';
@@ -20,6 +23,56 @@ function ensureSessionDir() {
   if (!fs.existsSync(SESSION_DIR)) {
     fs.mkdirSync(SESSION_DIR, { recursive: true });
   }
+}
+
+/**
+ * Download a file from a URL to a local path
+ */
+function downloadFile(url, outputPath) {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http;
+    const fileName = path.basename(new URL(url).pathname) || 'download';
+    const outputFilePath = path.join(outputPath, fileName);
+
+    const file = fs.createWriteStream(outputFilePath);
+    
+    protocol.get(url, (response) => {
+      if (response.statusCode === 301 || response.statusCode === 302) {
+        // Handle redirects
+        return downloadFile(response.headers.location, outputPath)
+          .then(resolve)
+          .catch(reject);
+      }
+      
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
+        return;
+      }
+
+      response.pipe(file);
+
+      file.on('finish', () => {
+        file.close(() => {
+          console.log(`📥 Downloaded: ${fileName}`);
+          resolve(outputFilePath);
+        });
+      });
+    }).on('error', (err) => {
+      fs.unlink(outputFilePath, () => {}); // Delete incomplete file
+      reject(err);
+    });
+  });
+}
+
+/**
+ * Ensure temp directory exists
+ */
+function ensureTempDir() {
+  const tempDir = path.join(__dirname, 'temp');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  return tempDir;
 }
 
 /**
@@ -351,33 +404,70 @@ async function uploadMediaToStrava(mediaPaths) {
 
 // Main execution
 if (require.main === module) {
-  // Get file paths from command line arguments or use default
-  const mediaPaths = process.argv.slice(2);
+  // Get URLs from command line arguments
+  const mediaUrls = process.argv.slice(2);
   
-  if (mediaPaths.length === 0) {
-    console.log('❌ Please provide at least one media file path');
-    console.log('Usage: node upload.js <file1> [file2] [file3] ...');
-    console.log('Example: node upload.js ./photos/photo1.jpg ./photos/photo2.jpg');
+  if (mediaUrls.length === 0) {
+    console.log('❌ Please provide at least one media URL');
+    console.log('Usage: node upload.js <url1> [url2] [url3] ...');
+    console.log('Example: node upload.js https://example.com/photo1.jpg https://example.com/photo2.jpg');
     process.exit(1);
   }
 
-  // Check if files exist
-  for (const filePath of mediaPaths) {
-    if (!fs.existsSync(filePath)) {
-      console.error(`❌ File not found: ${filePath}`);
-      process.exit(1);
-    }
-  }
+  // Process URLs - download if needed, or pass through if already local paths
+  (async () => {
+    const tempDir = ensureTempDir();
+    const localPaths = [];
 
-  uploadMediaToStrava(mediaPaths)
-    .then(() => {
-      console.log('🎉 Script completed successfully!');
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error('💥 Script failed:', error);
-      process.exit(1);
-    });
+    for (const input of mediaUrls) {
+      let localPath;
+
+      // Check if it's a URL (starts with http:// or https://)
+      if (input.startsWith('http://') || input.startsWith('https://')) {
+        console.log(`📥 Downloading: ${input}`);
+        try {
+          localPath = await downloadFile(input, tempDir);
+          localPaths.push(localPath);
+        } catch (error) {
+          console.error(`❌ Failed to download ${input}:`, error.message);
+          process.exit(1);
+        }
+      } else {
+        // Treat as local file path (for backwards compatibility)
+        if (!fs.existsSync(input)) {
+          console.error(`❌ File not found: ${input}`);
+          process.exit(1);
+        }
+        localPaths.push(input);
+      }
+    }
+
+    // Upload to Strava
+    uploadMediaToStrava(localPaths)
+      .then(() => {
+        console.log('🎉 Script completed successfully!');
+        
+        // Clean up downloaded files
+        if (tempDir.includes('temp')) {
+          console.log('🧹 Cleaning up temporary files...');
+          localPaths.forEach(filePath => {
+            if (filePath.includes('temp')) {
+              try {
+                fs.unlinkSync(filePath);
+              } catch (e) {
+                // Ignore errors
+              }
+            }
+          });
+        }
+        
+        process.exit(0);
+      })
+      .catch((error) => {
+        console.error('💥 Script failed:', error);
+        process.exit(1);
+      });
+  })();
 }
 
 module.exports = { uploadMediaToStrava };
