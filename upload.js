@@ -8,6 +8,11 @@ const SESSION_DIR = path.join(__dirname, 'sessions');
 const ACTIVITY_DELAY = 2000; // Delay before clicking activity
 const UPLOAD_TIMEOUT = 60000; // 60 seconds timeout for upload
 
+// Random delay helper to make behavior more human-like
+function randomDelay(min = 500, max = 1500) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 /**
  * Ensure sessions directory exists
  */
@@ -38,7 +43,12 @@ async function uploadMediaToStrava(mediaPaths) {
     // Store session data
     storageState: fs.existsSync(path.join(SESSION_DIR, 'state.json'))
       ? JSON.parse(fs.readFileSync(path.join(SESSION_DIR, 'state.json'), 'utf8'))
-      : undefined
+      : undefined,
+    // Anti-detection measures
+    viewport: { width: 1920, height: 1080 },
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    locale: 'en-US',
+    timezoneId: 'America/New_York'
   });
 
   const page = await context.newPage();
@@ -49,26 +59,55 @@ async function uploadMediaToStrava(mediaPaths) {
     await page.goto(`${STRAVA_URL}/athlete`);
 
     // Wait a bit to see if we're redirected or if we land on the athlete page
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
-    const currentUrl = page.url();
+    let currentUrl = page.url();
     console.log(`📍 Current URL: ${currentUrl}`);
 
     // If we're not on the athlete page or we're redirected to login
-    if (currentUrl.includes('login') || currentUrl.includes('account')) {
+    if (currentUrl.includes('login')) {
       console.log('❌ Not logged in. Please log in manually in the browser.');
-      console.log('💡 After logging in, close the browser to save the session.');
+      console.log('⏳ The browser window will stay open for 60 seconds...');
+      console.log('💡 Log in, navigate to your dashboard, then the script will continue');
+      console.log('💡 Take your time!');
       
-      // Keep browser open for manual login
-      await page.waitForTimeout(10000); // Give user 10 seconds to log in
+      await page.waitForTimeout(60000); // Wait 60 seconds for login
       
-      // Save the state after potential login
+      // Check again if we're logged in now
+      await page.goto(`${STRAVA_URL}/athlete`);
+      await page.waitForTimeout(3000);
+      currentUrl = page.url();
+      
+      if (currentUrl.includes('login')) {
+        console.log('❌ Still not logged in. Please run the script again and log in when prompted.');
+        await browser.close();
+        return;
+      }
+      
+      // Save the state after login
       await context.storageState({ path: path.join(SESSION_DIR, 'state.json') });
+      console.log('✅ Session saved!');
     }
 
     // Navigate to athlete activities
     console.log('📊 Navigating to activity feed...');
     await page.goto(`${STRAVA_URL}/athlete/training`);
+
+    // Wait for navigation
+    await page.waitForTimeout(3000);
+
+    // DEBUG: Log page content to understand structure
+    console.log('🔍 Debugging: Checking page elements...');
+    const url = page.url();
+    console.log(`📍 Current URL: ${url}`);
+    
+    // Check if we got redirected to login
+    if (url.includes('login')) {
+      console.log('❌ Redirected to login page - please log in and run again');
+      console.log('💡 Or we can add better session handling here');
+      await browser.close();
+      return;
+    }
 
     // Wait for activities to load
     await page.waitForSelector('[data-testid="activity-card"]', { timeout: 10000 }).catch(() => {
@@ -76,6 +115,19 @@ async function uploadMediaToStrava(mediaPaths) {
     });
 
     await page.waitForTimeout(ACTIVITY_DELAY);
+    
+    // Get all links with href containing "activities"
+    const activityLinks = await page.locator('a[href*="/activities/"]').all();
+    console.log(`📋 Found ${activityLinks.length} activity links`);
+    
+    if (activityLinks.length > 0) {
+      // Log the first few links for debugging
+      for (let i = 0; i < Math.min(3, activityLinks.length); i++) {
+        const href = await activityLinks[i].getAttribute('href');
+        const text = await activityLinks[i].textContent();
+        console.log(`  Link ${i + 1}: "${text.substring(0, 50)}" -> ${href}`);
+      }
+    }
 
     // Find the first (latest) activity card
     console.log('🔎 Finding latest activity...');
@@ -84,15 +136,18 @@ async function uploadMediaToStrava(mediaPaths) {
     if (!(await activityCard.count())) {
       // Try alternative selectors
       const alternatives = [
+        'a[href*="/activities/"]',
         '.activity-title',
         '.activity',
-        '[href*="/activities/"]'
+        '[class*="activity"]'
       ];
       
       let found = false;
       for (const selector of alternatives) {
+        console.log(`🔍 Trying selector: ${selector}`);
         const elements = await page.locator(selector).first();
         if (await elements.count()) {
+          console.log(`✅ Found element with selector: ${selector}`);
           await elements.click();
           found = true;
           break;
@@ -100,6 +155,8 @@ async function uploadMediaToStrava(mediaPaths) {
       }
       
       if (!found) {
+        console.log('❌ Could not find activity card with any selector');
+        console.log('💡 Please inspect the page manually and share what you see');
         throw new Error('Could not find activity card');
       }
     } else {
@@ -107,7 +164,7 @@ async function uploadMediaToStrava(mediaPaths) {
     }
 
     // Wait for activity detail page to load
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(randomDelay(2000, 4000));
 
     // Look for edit button
     console.log('✏️  Looking for edit button...');
