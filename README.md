@@ -1,90 +1,135 @@
 # Strava Media Uploader
 
-An automated tool to upload media (photos/videos) to your latest Strava activity using Playwright.
+An automated tool to upload media (photos/videos) from URLs to your latest Strava activity using Playwright and Browserless.io.
 
-## Features
+## 🚀 Quick Deploy to Railway
 
-- 🔐 **Session Persistence**: Login once, stay logged in
-- 🚀 **Automated Upload**: Finds your latest activity and uploads media
-- 📸 **Photo & Video Support**: Supports multiple file types
-- 🔄 **Retry & Error Handling**: Robust error handling and retry logic
-- 🛠️ **Manual Fallback**: Will prompt you if automated steps fail
+### 1. Connect GitHub to Railway
+1. Go to [railway.app](https://railway.app)
+2. Click "New Project" → "Deploy from GitHub repo"
+3. Select: `https://github.com/Rooshosh/Strava-Media-Uploader`
 
-## Installation
-
-```bash
-npm install
+### 2. Add Environment Variables
+In Railway dashboard → Variables tab:
+```
+BROWSERLESS_WS_ENDPOINT=wss://production-sfo.browserless.io/chromium/playwright?token=YOUR_TOKEN
 ```
 
-## Usage
+### 3. Upload Session File
+**Option A: Via Railway Dashboard**
+1. Go to your deployment → Settings → Volumes
+2. Create `sessions` directory
+3. Upload `sessions/state.json` from your local project
+
+**Option B: Via CLI** (after `railway login`)
+```bash
+railway link
+railway run mkdir -p sessions
+scp sessions/state.json railway:/sessions/state.json
+```
+
+### 4. Get Your Webhook URL
+Railway will deploy and give you a URL like: `https://your-app.railway.app`
+
+Your webhook endpoint is: `https://your-app.railway.app/upload`
+
+## Make.com Integration
+
+### Setup Webhook in Make.com
+1. Create new scenario
+2. Add "Webhooks" → "Custom webhook"
+3. Copy webhook URL
+4. Add "HTTP" module:
+   - Method: POST
+   - URL: `https://your-app.railway.app/upload`
+   - Body:
+     ```json
+     {
+       "urls": [
+         "https://example.com/image1.jpg",
+         "https://example.com/image2.jpg"
+       ]
+     }
+     ```
+
+## Local Testing
 
 ### First Time Setup
-
-1. Run the script with a media URL:
 ```bash
 node upload.js https://example.com/photo.jpg
+# Log in when browser opens
+# Session saved to sessions/state.json
 ```
 
-2. The browser will open. You need to log in to Strava the first time.
-
-3. After logging in, close the browser (or wait) and the session will be saved.
-
-4. For future runs, you won't need to log in again.
-
-### Upload Media
-
-The script accepts URLs to media files. It will automatically download them and upload to Strava.
-
+### Manual Testing
 ```bash
-node upload.js <url1> [url2] [url3] ...
-```
+# With local browser
+node upload.js "https://example.com/image.jpg"
 
-Example:
-```bash
-node upload.js https://example.com/photo1.jpg https://example.com/photo2.jpg
-node upload.js https://cdn.example.com/video.mp4
+# With Browserless.io
+BROWSERLESS_WS_ENDPOINT="wss://..." node upload.js "https://example.com/image.jpg"
 ```
 
 ## How It Works
 
-1. **Login Check**: Checks if you're logged in using saved session data
-2. **Navigate**: Goes to your activity feed
-3. **Find Activity**: Finds your latest activity
-4. **Edit**: Clicks edit button
-5. **Upload**: Uploads the provided media files
-6. **Wait**: Waits for upload to complete
-7. **Save**: Clicks save button
-8. **Store Session**: Saves the session for future use
+1. Make.com sends URLs to your Railway server
+2. Server downloads the media files
+3. Server connects to Browserless.io
+4. Browserless.io runs the browser and uploads to Strava
+5. Response sent back to Make.com
 
-## Session Storage
+## Features
 
-Sessions are stored in the `sessions/` directory:
-- `state.json`: Contains cookies and session data
+- ✅ **URL Support**: Downloads from any public URL
+- ✅ **Session Persistence**: Login once, stay logged in
+- ✅ **Multiple Files**: Upload multiple images/videos at once
+- ✅ **Browserless.io**: Scalable browser automation
+- ✅ **Error Handling**: Robust retry logic
+- ✅ **Auto Cleanup**: Removes temporary files
+
+## Architecture
+
+```
+Make.com → Railway Server → Browserless.io → Strava
+```
+
+- **Make.com**: Triggers with media URLs
+- **Railway**: Runs your Node.js server and script
+- **Browserless.io**: Provides the remote browser
+- **Strava**: Receives the upload
+
+## Cost Estimate
+
+- Railway: Free tier or $5/month
+- Browserless.io: Pay per minute (~$0.01/min)
+- Make.com: Free tier or paid plans
+- **Total**: ~$5-10/month
 
 ## Troubleshooting
 
-### Browser stays open
-- This is intentional for debugging
-- Close the browser manually when done
+### "Session expired" error
+1. Run locally: `node upload.js https://example.com/test.jpg`
+2. Log in fresh
+3. Upload new `sessions/state.json` to Railway
 
-### Automation fails
-- The script will prompt you to complete steps manually if it can't find elements
-- This is a safety feature to prevent errors
+### Upload fails
+- Check URLs are accessible
+- Verify Browserless.io token is valid
+- Check Railway logs
 
-### First time login
-- Run the script
-- Log in manually when prompted
-- The session will be saved for future runs
+## Development
 
-## Future Enhancements
+```bash
+# Install dependencies
+npm install
 
-- [ ] Webhook integration for external triggers
-- [ ] Support for direct URL downloads
-- [ ] Batch processing of multiple activities
-- [ ] Config file for customization
-- [ ] Headless mode option
+# Run locally
+node upload.js "https://example.com/image.jpg"
+
+# Run server
+npm start
+```
 
 ## License
 
 ISC
-
