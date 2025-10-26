@@ -381,9 +381,17 @@ async function uploadMediaToStrava(mediaPaths) {
     // Wait for save to complete
     await page.waitForTimeout(3000);
 
-    // Save the session state
-    await context.storageState({ path: path.join(SESSION_DIR, 'state.json') });
-    console.log('✅ Session saved successfully!');
+    // Save the session state (only if not using Browserless.io)
+    if (!useBrowserless) {
+      try {
+        await context.storageState({ path: path.join(SESSION_DIR, 'state.json') });
+        console.log('✅ Session saved successfully!');
+      } catch (e) {
+        console.log('⚠️  Could not save session (browser may have closed)');
+      }
+    } else {
+      console.log('✅ Upload complete! (session managed by Browserless.io)');
+    }
 
     console.log('✅ Upload complete!');
 
