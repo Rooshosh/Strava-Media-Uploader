@@ -1,12 +1,33 @@
 const express = require('express');
 const { exec } = require('child_process');
+const fs = require('fs');
 const app = express();
 
 app.use(express.json());
 
 // Health check
 app.get('/', (req, res) => {
-  res.json({ status: 'online', service: 'Strava Media Uploader' });
+  res.json({ 
+    status: 'online', 
+    service: 'Strava Media Uploader',
+    endpoints: {
+      upload: '/upload',
+      health: '/health'
+    }
+  });
+});
+
+// Health check with more details
+app.get('/health', (req, res) => {
+  const hasBrowserless = !!process.env.BROWSERLESS_WS_ENDPOINT;
+  const hasSession = fs.existsSync('/sessions/state.json') || fs.existsSync('./sessions/state.json');
+  
+  res.json({ 
+    status: 'healthy',
+    session_file_exists: hasSession,
+    browserless_configured: hasBrowserless,
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // Upload endpoint for Make.com webhooks
