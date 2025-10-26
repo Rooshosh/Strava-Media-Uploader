@@ -93,6 +93,26 @@ async function uploadMediaToStrava(mediaPaths) {
   console.log(`🖥️  Mode: ${useBrowserless ? 'Browserless.io' : 'Local browser'}`);
   console.log(`👁️  Browser: ${isHeadless ? 'Headless' : 'Visible'}`);
 
+  // Get session data from environment variable or file
+  let sessionData;
+  
+  // Try environment variable first (for cloud deployment)
+  if (process.env.SESSION_DATA) {
+    try {
+      const decoded = Buffer.from(process.env.SESSION_DATA, 'base64').toString('utf-8');
+      sessionData = JSON.parse(decoded);
+      console.log('✅ Session loaded from environment variable');
+    } catch (e) {
+      console.log('⚠️  Failed to parse SESSION_DATA, trying file system...');
+    }
+  }
+  
+  // Fall back to file system (for local development)
+  if (!sessionData && fs.existsSync(path.join(SESSION_DIR, 'state.json'))) {
+    sessionData = JSON.parse(fs.readFileSync(path.join(SESSION_DIR, 'state.json'), 'utf8'));
+    console.log('✅ Session loaded from file');
+  }
+
   // Launch browser - either locally or via Browserless.io
   let browser;
   if (useBrowserless) {
@@ -107,9 +127,7 @@ async function uploadMediaToStrava(mediaPaths) {
 
   const context = await browser.newContext({
     // Store session data
-    storageState: fs.existsSync(path.join(SESSION_DIR, 'state.json'))
-      ? JSON.parse(fs.readFileSync(path.join(SESSION_DIR, 'state.json'), 'utf8'))
-      : undefined,
+    storageState: sessionData || undefined,
     // Anti-detection measures
     viewport: { width: 1920, height: 1080 },
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
