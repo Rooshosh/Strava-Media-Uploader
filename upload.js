@@ -64,41 +64,22 @@ async function uploadMediaToStrava(mediaPaths) {
     let currentUrl = page.url();
     console.log(`📍 Current URL: ${currentUrl}`);
 
-    // If we're redirected to login, we need to log in
+    // If we're redirected to login, session has expired or was invalid
     if (currentUrl.includes('login')) {
-      console.log('❌ Not logged in. Please log in manually in the browser.');
-      console.log('💡 Log in to Strava in the browser window and wait for it to load your dashboard');
-      console.log('⏳ Waiting for you to complete login...');
-      console.log('💡 This will check every 5 seconds for up to 2 minutes');
+      console.log('❌ Not logged in. Session expired or invalid.');
+      console.log('');
+      console.log('🔧 For initial setup (interactive):');
+      console.log('   Run the script locally with a browser and log in manually');
+      console.log('   After login, your session will be saved');
+      console.log('');
+      console.log('🔧 For cloud/production (automated):');
+      console.log('   Session must be set up first');
+      console.log('   If this error occurs in production, session has expired');
+      console.log('   You need to re-authenticate or refresh your session');
+      console.log('');
       
-      // Wait for login by checking if URL changes from login page
-      let loggedIn = false;
-      for (let attempt = 0; attempt < 24; attempt++) { // Check for 2 minutes (24 * 5s)
-        await page.waitForTimeout(5000);
-        
-        // Check current URL without navigating away
-        currentUrl = page.url();
-        
-        if (!currentUrl.includes('login')) {
-          loggedIn = true;
-          console.log('✅ Login successful!');
-          break;
-        }
-        
-        if (attempt % 6 === 0 && attempt > 0) {
-          console.log(`⏳ Still waiting for login... (${attempt * 5}s elapsed)`);
-        }
-      }
-      
-      if (!loggedIn) {
-        console.log('❌ Login timeout. Please run the script again.');
-        await browser.close();
-        return;
-      }
-      
-      // Save the state after login
-      await context.storageState({ path: path.join(SESSION_DIR, 'state.json') });
-      console.log('✅ Session saved!');
+      await browser.close();
+      throw new Error('Authentication required - session expired or invalid');
     }
 
     // Now we're logged in, let's continue with the activity feed
