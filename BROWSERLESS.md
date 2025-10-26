@@ -29,16 +29,18 @@ HEADLESS=true node upload.js ./photos/image.jpg
 
 For **Browserless.io:**
 ```bash
-# Set the Browserless WebSocket endpoint
-BROWSERLESS_WS_ENDPOINT=wss://chrome.browserless.io/?token=YOUR_TOKEN node upload.js ./photos/image.jpg
+# Set the Browserless WebSocket endpoint (get from Browserless.io dashboard)
+BROWSERLESS_WS_ENDPOINT=wss://production-sfo.browserless.io/chromium/playwright?token=YOUR_TOKEN node upload.js https://example.com/image.jpg
 ```
 
 ### 3. Deploy to Browserless.io
 
 #### Step 1: Get Your Browserless Token
 1. Log into [browserless.io](https://www.browserless.io)
-2. Get your WebSocket endpoint from dashboard
-3. It looks like: `wss://chrome.browserless.io/?token=abc123...`
+2. Go to "Tools" → "Browserless Snippets" 
+3. Select "Playwright" framework and "JavaScript"
+4. Toggle "Use actual token" to ON
+5. Copy the WebSocket URL (looks like: `wss://production-REGION.browserless.io/chromium/playwright?token=abc123...`)
 
 #### Step 2: Upload Session File
 You need to upload your `sessions/state.json` to your server/container:
@@ -73,8 +75,8 @@ cp /path/to/state.json sessions/state.json
 
 ```bash
 # Set environment variable and run
-export BROWSERLESS_WS_ENDPOINT="wss://chrome.browserless.io/?token=YOUR_TOKEN"
-node upload.js ./photos/test-image.jpg
+export BROWSERLESS_WS_ENDPOINT="wss://production-sfo.browserless.io/chromium/playwright?token=YOUR_TOKEN"
+node upload.js https://example.com/test-image.jpg
 ```
 
 ## Make.com Integration
@@ -212,7 +214,7 @@ Save this as `deploy.sh`:
 echo "Deploying Strava uploader..."
 
 # Set Browserless endpoint
-export BROWSERLESS_WS_ENDPOINT="wss://chrome.browserless.io/?token=$BROWSERLESS_TOKEN"
+export BROWSERLESS_WS_ENDPOINT="wss://production-sfo.browserless.io/chromium/playwright?token=$BROWSERLESS_TOKEN"
 
 # Run the uploader
 node upload.js "$@"
