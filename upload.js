@@ -33,11 +33,24 @@ async function uploadMediaToStrava(mediaPaths) {
   // Ensure sessions directory exists
   ensureSessionDir();
 
-  // Launch browser with persistent context for session storage
-  const browser = await chromium.launch({
-    headless: false, // Set to true for production
-    slowMo: 500 // Slow down operations for visibility
-  });
+  // Configuration from environment variables or defaults
+  const useBrowserless = process.env.BROWSERLESS_WS_ENDPOINT || false;
+  const isHeadless = process.env.HEADLESS === 'true' || useBrowserless;
+  
+  console.log(`🖥️  Mode: ${useBrowserless ? 'Browserless.io' : 'Local browser'}`);
+  console.log(`👁️  Browser: ${isHeadless ? 'Headless' : 'Visible'}`);
+
+  // Launch browser - either locally or via Browserless.io
+  let browser;
+  if (useBrowserless) {
+    console.log('🔗 Connecting to Browserless.io...');
+    browser = await chromium.connect(useBrowserless);
+  } else {
+    browser = await chromium.launch({
+      headless: isHeadless,
+      slowMo: isHeadless ? 0 : 500 // Slow down only in visible mode
+    });
+  }
 
   const context = await browser.newContext({
     // Store session data
@@ -325,9 +338,14 @@ async function uploadMediaToStrava(mediaPaths) {
     console.error('❌ Error during upload:', error);
     throw error;
   } finally {
-    // Keep browser open for debugging, uncomment to auto-close
-    // await browser.close();
-    console.log('💡 Browser remains open for inspection. Close it when done.');
+    // Close browser for automation/headless, keep open for local debugging
+    if (isHeadless || useBrowserless) {
+      await browser.close();
+      console.log('🔒 Browser closed (automation mode)');
+    } else {
+      console.log('💡 Browser remains open for inspection. Close it when done.');
+      // Uncomment to auto-close: await browser.close();
+    }
   }
 }
 
