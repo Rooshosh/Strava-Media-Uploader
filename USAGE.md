@@ -7,22 +7,9 @@
 npm install
 ```
 
-2. **Prepare your media files:**
-Add your photo or video files to the project directory (or any location you prefer).
-
-Example structure:
-```
-project/
-├── photos/
-│   ├── photo1.jpg
-│   ├── photo2.jpg
-│   └── photo3.jpg
-└── upload.js
-```
-
-3. **First run - Login:**
+2. **First run - Login:**
 ```bash
-node upload.js ./photos/photo1.jpg
+node upload.js https://example.com/photo.jpg
 ```
 
 - The browser will open
@@ -30,39 +17,49 @@ node upload.js ./photos/photo1.jpg
 - The session will be saved automatically
 - Close the browser when done
 
-4. **Future runs:**
+3. **Future runs:**
 ```bash
-node upload.js ./photos/photo1.jpg ./photos/photo2.jpg
+node upload.js https://example.com/photo1.jpg https://example.com/photo2.jpg
 ```
 
 No need to log in again! The session is remembered.
 
+## How It Works
+
+The script accepts URLs to media files. It will automatically:
+1. Download the files from the URLs to a temporary directory
+2. Upload them to your latest Strava activity
+3. Clean up the temporary files
+
 ## Example Commands
 
-### Upload single photo:
+### Upload single photo from URL:
 ```bash
-npm start ./photo.jpg
+node upload.js https://example.com/photo.jpg
 ```
 
 ### Upload multiple photos:
 ```bash
-npm start ./photos/photo1.jpg ./photos/photo2.jpg ./photos/photo3.jpg
+node upload.js https://example.com/photo1.jpg https://example.com/photo2.jpg https://example.com/photo3.jpg
 ```
 
 ### Upload video:
 ```bash
-npm start ./video.mp4
+node upload.js https://cdn.example.com/video.mp4
 ```
 
 ### Upload mix of photos and videos:
 ```bash
-npm start ./photo1.jpg ./photo2.jpg ./video.mp4
+node upload.js https://example.com/photo1.jpg https://example.com/photo2.jpg https://example.com/video.mp4
 ```
 
 ## Troubleshooting
 
-### "File not found" error
-Make sure your file paths are correct and the files exist.
+### "Failed to download" error
+- Check that the URL is accessible
+- Verify the URL is a direct link to the file (not a redirect page)
+- Check your internet connection
+- Some servers may block automated downloads
 
 ### Session not saving
 - Make sure you're logged in to Strava in the browser

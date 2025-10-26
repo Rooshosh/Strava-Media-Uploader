@@ -20,9 +20,9 @@ npm install
 
 ### First Time Setup
 
-1. Run the script with your media files:
+1. Run the script with a media URL:
 ```bash
-npm start
+node upload.js https://example.com/photo.jpg
 ```
 
 2. The browser will open. You need to log in to Strava the first time.
@@ -33,20 +33,16 @@ npm start
 
 ### Upload Media
 
+The script accepts URLs to media files. It will automatically download them and upload to Strava.
+
 ```bash
-npm start <file1> [file2] [file3] ...
+node upload.js <url1> [url2] [url3] ...
 ```
 
 Example:
 ```bash
-npm start ./photos/photo1.jpg ./photos/photo2.jpg
-npm start ./media/video.mp4
-```
-
-### With Node
-
-```bash
-node upload.js ./photos/photo1.jpg ./photos/photo2.jpg
+node upload.js https://example.com/photo1.jpg https://example.com/photo2.jpg
+node upload.js https://cdn.example.com/video.mp4
 ```
 
 ## How It Works
