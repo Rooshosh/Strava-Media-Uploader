@@ -349,6 +349,15 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
               // Upload files one at a time - Strava seems to only accept one at a time
               for (let i = 0; i < mediaPaths.length; i++) {
                 const mediaPath = mediaPaths[i];
+                
+                // Check time remaining - if less than 10s, save what we have NOW
+                const elapsed = Date.now() - uploadStartTime;
+                if (elapsed > HARD_TIMEOUT - 10000 && uploadedCount > 0) {
+                  console.log(`⚠️  Approaching timeout (${Math.floor(elapsed/1000)}s), saving ${uploadedCount} file(s) now to avoid data loss...`);
+                  // Break immediately and go to save
+                  break;
+                }
+                
                 console.log(`\n📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
                 
                 try {
@@ -360,21 +369,25 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
                   try {
                     await page.title();
                   } catch (e) {
-                    console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Stopping upload loop.`);
-                    return uploadedCount; // Return count of files uploaded before browser closed
+                    console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Cannot save - browser already closed.`);
+                    console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+                    return 0; // Don't count these - they weren't saved!
                   }
                   
                   // Wait for upload to start/complete before next file
                   if (i < mediaPaths.length - 1) {
-                    await page.waitForTimeout(1000);
+                    await page.waitForTimeout(1000); // Reduced to 1s for speed
                   }
                 } catch (e) {
                   console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
-                  // If browser closed, stop
+                  // If browser closed, we can't save
                   if (e.message.includes('closed')) {
-                    console.log(`⚠️  Stopping upload loop due to browser closure.`);
-                    return uploadedCount;
+                    console.log(`❌ Browser closed during upload. ${uploadedCount} file(s) already queued but NOT saved.`);
+                    console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+                    return 0; // Don't count these - they weren't saved!
                   }
+                  // For other errors, continue
+                  uploadedCount--; // Don't count failed uploads
                 }
               }
             uploadButtonFound = true;
@@ -396,6 +409,15 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
               // Upload files one at a time - Strava seems to only accept one at a time
               for (let i = 0; i < mediaPaths.length; i++) {
                 const mediaPath = mediaPaths[i];
+                
+                // Check time remaining - if less than 10s, save what we have NOW
+                const elapsed = Date.now() - uploadStartTime;
+                if (elapsed > HARD_TIMEOUT - 10000 && uploadedCount > 0) {
+                  console.log(`⚠️  Approaching timeout (${Math.floor(elapsed/1000)}s), saving ${uploadedCount} file(s) now to avoid data loss...`);
+                  // Break immediately and go to save
+                  break;
+                }
+                
                 console.log(`\n📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
                 
                 try {
@@ -407,21 +429,25 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
                   try {
                     await page.title();
                   } catch (e) {
-                    console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Stopping upload loop.`);
-                    return uploadedCount;
+                    console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Cannot save - browser already closed.`);
+                    console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+                    return 0; // Don't count these - they weren't saved!
                   }
                   
                   // Wait for upload to start/complete before next file
                   if (i < mediaPaths.length - 1) {
-                    await page.waitForTimeout(1000);
+                    await page.waitForTimeout(1000); // Reduced to 1s for speed
                   }
                 } catch (e) {
                   console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
-                  // If browser closed, stop
+                  // If browser closed, we can't save
                   if (e.message.includes('closed')) {
-                    console.log(`⚠️  Stopping upload loop due to browser closure.`);
-                    return uploadedCount;
+                    console.log(`❌ Browser closed during upload. ${uploadedCount} file(s) already queued but NOT saved.`);
+                    console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+                    return 0; // Don't count these - they weren't saved!
                   }
+                  // For other errors, continue
+                  uploadedCount--; // Don't count failed uploads
                 }
               }
               
@@ -441,96 +467,69 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
       await page.waitForTimeout(5000);
     }
 
-    // Wait for uploads to complete (very short wait for photos)
-    console.log('⏳ Verifying uploads are complete...');
+    // Give uploads just a few seconds to start, then save immediately
+    console.log('⏳ Giving uploads time to start...');
     
-    // Minimal wait with hard timeout to save before Browserless closes
-    let uploadComplete = false;
+    // Calculate remaining time before hard timeout
+    const elapsedBeforeWait = Date.now() - uploadStartTime;
+    const remainingTime = HARD_TIMEOUT - elapsedBeforeWait;
+    const waitTime = Math.min(3000, remainingTime - 3000); // Wait max 3s, leave 3s for save
+    const maxWaitAttempts = Math.max(1, Math.ceil(waitTime / 1000)); // At least 1s
     
-    for (let attempt = 0; attempt < 10; attempt++) { // Check for up to 10 seconds max
-      try {
-        await page.waitForTimeout(1000);
-      } catch (e) {
-        if (e.message.includes('closed')) {
-          console.log('⚠️  Browser closed during upload wait, proceeding to save...');
-          uploadComplete = true;
+    console.log(`⏳ Waiting ${maxWaitAttempts}s for uploads to start...`);
+    
+    try {
+      // Just wait briefly - Strava handles uploads in background
+      for (let attempt = 0; attempt < maxWaitAttempts; attempt++) {
+        try {
+          await page.waitForTimeout(1000);
+        } catch (e) {
+          if (e.message.includes('closed')) {
+            console.log('⚠️  Browser closed during wait - cannot save');
+            console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+            return 0; // Don't count these - they weren't saved!
+          }
+          throw e;
+        }
+        
+        // Check if we've exceeded hard timeout
+        const elapsed = Date.now() - uploadStartTime;
+        if (elapsed >= HARD_TIMEOUT - 3000) {
+          console.log(`⚠️  Running out of time (${Math.floor(elapsed/1000)}s). Saving now...`);
           break;
         }
+      }
+      
+      console.log('✅ Uploads should be processing in background. Saving changes...');
+    } catch (e) {
+      if (e.message.includes('closed')) {
+        console.log('⚠️  Browser closed during verification. Cannot save.');
+        console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+        return 0; // Don't count these - they weren't saved!
+      } else {
         throw e;
       }
-      
-      // Check for multiple types of upload indicators
-      const selectors = [
-        '[class*="uploading"]',
-        '[class*="progress"]',
-        '[class*="loading"]',
-        '[aria-label*="upload"]',
-        '[aria-label*="Uploading"]',
-        '[role="progressbar"]',
-        'button:has-text("Uploading")',
-        'div:has-text("Uploading")',
-        'div:has-text("Processing")'
-      ];
-      
-      let hasActiveUpload = false;
-      
-      // Check visible indicators
-      for (const selector of selectors) {
-        try {
-          const elements = await page.locator(selector).all();
-          for (const element of elements) {
-            const isVisible = await element.isVisible();
-            if (isVisible) {
-              const text = await element.textContent();
-              // Double-check it's actually uploading/processing
-              if (text?.toLowerCase().includes('upload') || 
-                  text?.toLowerCase().includes('process') ||
-                  text?.toLowerCase().includes('load')) {
-                hasActiveUpload = true;
-                console.log(`  ⏳ Detected upload activity: "${text}"`);
-                break;
-              }
-            }
-          }
-          if (hasActiveUpload) break;
-        } catch (e) {
-          // Selector failed, continue
-        }
-      }
-      
-      // Check hard timeout FIRST (save before Browserless closes at ~64s)
-      const elapsed = Date.now() - uploadStartTime;
-      if (elapsed >= HARD_TIMEOUT) {
-        console.log(`⚠️  Hard timeout reached (${(elapsed / 1000).toFixed(1)}s). Forcing save before Browserless closes...`);
-        uploadComplete = true;
-        break;
-      }
-      
-      // Quick check - if no upload indicators for 2 seconds, assume done
-      if (!hasActiveUpload && attempt > 1) {
-        uploadComplete = true;
-        console.log(`✅ Uploads appear complete (${attempt + 1}s verification)`);
-        break;
-      }
-      
-      // Log every 5 seconds to show progress
-      if ((attempt + 1) % 5 === 0 && attempt > 0) {
-        console.log(`⏳ Still uploading... (${attempt + 1}s elapsed)`);
-      }
     }
     
-    if (!uploadComplete) {
-      console.log('⚠️  Upload loop timeout. Proceeding with caution...');
-    }
-    
-    // Short final wait
-    await page.waitForTimeout(1000);
+    // Minimal wait before clicking save
+    await page.waitForTimeout(500);
 
     // Click save button (with browser closure protection)
+    let saveButtonClicked = false;
+    
     try {
-      // Check if browser is still open
+      // Check if browser is still open - if not, can't save
       await page.title();
-      
+    } catch (e) {
+      if (e.message?.includes('closed') || e.message?.includes('Target')) {
+        console.log('⚠️  Browser closed before save. Cannot save.');
+        console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+        return 0; // Don't count these - they weren't saved!
+      }
+      throw e;
+    }
+    
+    try {
       const saveButtonSelectors = [
         'button:has-text("Save")',
         'button:has-text("Confirm")',
@@ -538,8 +537,6 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
         '[data-cy="save"]',
         'button.btn-primary:has-text("Save")'
       ];
-
-      let saveButtonClicked = false;
       for (const selector of saveButtonSelectors) {
         try {
           const saveButton = await page.locator(selector).first();
@@ -557,21 +554,30 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
       if (!saveButtonClicked) {
         console.log('⚠️  Save button not found automatically. Please click it manually in the browser.');
         await page.waitForTimeout(5000);
-      }
-
-      // Wait for save to complete (if page is still open)
-      try {
-        await page.waitForTimeout(1000);
-      } catch (e) {
-        // Browser may have closed, that's okay
-        console.log('⏩ Skipping final wait (browser closed)');
+      } else {
+        // Wait for save to complete (if page is still open)
+        try {
+          await page.waitForTimeout(1000);
+        } catch (e) {
+          // Browser may have closed, that's okay
+          console.log('⏩ Skipping final wait (browser closed)');
+        }
       }
     } catch (error) {
       if (error.message?.includes('closed') || error.message?.includes('Target')) {
-        console.log('⚠️  Browser closed before save. Changes may not be saved.');
+        console.log('⚠️  Browser closed during save. Changes may not be saved.');
+        console.log(`⚠️  Returned 0 - files will be retried in next session as they were not saved.`);
+        return 0; // Don't count these - they weren't saved!
       } else {
         throw error;
       }
+    }
+    
+    // CRITICAL: Only return uploadedCount if we actually clicked save!
+    // If save button was never clicked, files were not saved and should be retried
+    if (!saveButtonClicked) {
+      console.log('⚠️  Save button was never clicked. Returned 0 - files will be retried.');
+      return 0;
     }
 
     // Save the session state (only if not using Browserless.io)
@@ -756,4 +762,5 @@ if (require.main === module) {
 }
 
 module.exports = { uploadMediaToStrava };
+
 
