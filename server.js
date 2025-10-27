@@ -1,43 +1,13 @@
 const express = require('express');
 const { exec } = require('child_process');
 const fs = require('fs');
+const zlib = require('zlib');
 const app = express();
 
-// Handle compressed requests from Make.com
-app.use(express.raw({
-  type: 'application/json',
-  limit: '50mb',
-  inflate: true
+// Use Express JSON parser (handles compression automatically)
+app.use(express.json({
+  limit: '50mb'
 }));
-
-// Custom JSON parser with error handling
-app.use((req, res, next) => {
-  // If body is buffer (from raw), parse it as JSON
-  if (Buffer.isBuffer(req.body)) {
-    try {
-      const jsonString = req.body.toString('utf8');
-      req.body = JSON.parse(jsonString);
-      console.log('📥 Received request:', JSON.stringify(req.body, null, 2));
-    } catch (e) {
-      console.error('❌ JSON Parse Error:', e.message);
-      const bodyStr = req.body.toString('utf8');
-      console.error('Body length:', bodyStr.length);
-      console.error('First 300 chars:', bodyStr.substring(0, 300));
-      const posMatch = e.message.match(/position (\d+)/);
-      if (posMatch) {
-        const pos = parseInt(posMatch[1]);
-        console.error('Chars around position', pos, ':', bodyStr.substring(Math.max(0, pos - 20), pos + 20));
-      }
-      
-      return res.status(400).json({ 
-        error: 'Invalid JSON format',
-        details: e.message,
-        bodyLength: bodyStr.length
-      });
-    }
-  }
-  next();
-});
 
 // Error handler for JSON parse errors
 app.use((err, req, res, next) => {
@@ -80,7 +50,8 @@ app.get('/health', (req, res) => {
 
 // Upload endpoint for Make.com webhooks
 app.post('/upload', (req, res) => {
-  console.log('📥 Received request:', JSON.stringify(req.body, null, 2));
+  console.log('📥 Received request body:', JSON.stringify(req.body, null, 2));
+  console.log('📥 Request headers:', JSON.stringify(req.headers, null, 2));
   
   // Extract only 'urls' from body - ignore any other fields
   const { urls } = req.body;
