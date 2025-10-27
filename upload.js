@@ -161,10 +161,10 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
 
   // Start timer for Browserless timeout tracking
   const uploadStartTime = Date.now();
-  const HARD_TIMEOUT = 60000; // 60 seconds to save before Browserless closes at ~64s
+  const HARD_TIMEOUT = 50000; // 50 seconds to save before Browserless closes at ~64s (14s safety margin)
   
   // Launch browser - either locally or via Browserless.io
-  console.log('🔗 Starting browser session (60s timeout)...');
+  console.log('🔗 Starting browser session (50s timeout)...');
   let browser;
   if (useBrowserless) {
     browser = await chromium.connect(useBrowserless);
@@ -447,7 +447,7 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
     // Minimal wait with hard timeout to save before Browserless closes
     let uploadComplete = false;
     
-    for (let attempt = 0; attempt < 50; attempt++) { // Check for up to 50 seconds max
+    for (let attempt = 0; attempt < 10; attempt++) { // Check for up to 10 seconds max
       try {
         await page.waitForTimeout(1000);
       } catch (e) {
