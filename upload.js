@@ -225,36 +225,14 @@ async function uploadMediaToStrava(mediaPaths) {
     
     // Get all links with href containing "activities"
     const activityLinks = await page.locator('a[href*="/activities/"]').all();
-    console.log(`📋 Found ${activityLinks.length} activity links`);
-    
-    if (activityLinks.length > 0) {
-      // Log the first few links for debugging
-      for (let i = 0; i < Math.min(3, activityLinks.length); i++) {
-        const href = await activityLinks[i].getAttribute('href');
-        const text = await activityLinks[i].textContent();
-        console.log(`  Link ${i + 1}: "${text.substring(0, 50)}" -> ${href}`);
-      }
-    }
-
-    // Find the first (latest) activity card
-    console.log('🔎 Finding latest activity...');
+    console.log('🔎 Selecting latest activity...');
     
     // Try to click the latest activity
     let clicked = false;
     
-    // First try the activity card selector
-    const activityCards = page.locator('[data-testid="activity-card"]');
-    if (await activityCards.count() > 0) {
-      console.log('✅ Found activity card');
-      await activityCards.first().click();
-      clicked = true;
-    }
-    
-    // If that doesn't work, find the latest activity link specifically
-    if (!clicked) {
-      console.log('🔍 Trying alternative: finding latest activity link...');
-      
-      // Get all links to activity details (not share buttons)
+    // Find the latest activity link (skip the card selector that never works)
+    // Get all links to activity details (not share buttons)
+    {
       const allLinks = await page.locator('a[href*="/activities/"]').all();
       
       // Filter to find actual activity links (not Twitter/other share links)
@@ -276,7 +254,7 @@ async function uploadMediaToStrava(mediaPaths) {
         // This looks like an actual activity link
         if (href.startsWith('/activities/') || href.startsWith('https://www.strava.com/activities/')) {
           latestActivityHref = href.startsWith('/') ? `https://www.strava.com${href}` : href;
-          console.log(`✅ Found latest activity: ${latestActivityHref}`);
+          console.log(`✅ Opened latest activity`);
           // Navigate directly to the activity
           await page.goto(latestActivityHref);
           clicked = true;
@@ -298,8 +276,8 @@ async function uploadMediaToStrava(mediaPaths) {
     // Wait for activity detail page to load
     await page.waitForTimeout(1500);
 
-    // Look for edit button (pencil icon)
-    console.log('✏️  Looking for edit button...');
+    // Click edit button
+    console.log('✏️  Clicking edit button...');
     
     // Try multiple possible selectors for the edit button
     // Priority: pencil icon button, then text-based buttons
@@ -327,10 +305,10 @@ async function uploadMediaToStrava(mediaPaths) {
               continue;
             }
             
-            await editButton.click();
-            editButtonClicked = true;
-            console.log(`✅ Found edit button with selector: ${selector}`);
-            break;
+              await editButton.click();
+              editButtonClicked = true;
+              console.log(`✅ Clicked edit button`);
+              break;
           }
         }
         if (editButtonClicked) break;
@@ -348,7 +326,7 @@ async function uploadMediaToStrava(mediaPaths) {
     await page.waitForTimeout(1000);
     
     // Look for photo upload input
-    console.log('📸 Looking for photo upload button...');
+    console.log('📸 Uploading photos...');
     
     const fileInputSelectors = [
       'input[type="file"]',
@@ -526,8 +504,8 @@ async function uploadMediaToStrava(mediaPaths) {
     // Short final wait
     await page.waitForTimeout(1000);
 
-    // Look for save button
-    console.log('💾 Looking for save button...');
+    // Click save button
+    console.log('💾 Clicking save button...');
     const saveButtonSelectors = [
       'button:has-text("Save")',
       'button:has-text("Confirm")',
@@ -543,7 +521,7 @@ async function uploadMediaToStrava(mediaPaths) {
         if (await saveButton.isVisible({ timeout: 2000 })) {
           await saveButton.click();
           saveButtonClicked = true;
-          console.log(`✅ Save button clicked: ${selector}`);
+          console.log(`✅ Clicked save button`);
           break;
         }
       } catch (e) {
