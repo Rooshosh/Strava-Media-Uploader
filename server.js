@@ -25,6 +25,13 @@ const executeUpload = (req, res) => {
   
   console.log(`\n🚀 Starting media upload for ${urls.length} file(s)...`);
   
+  // Return 202 immediately so Make.com doesn't retry
+  res.status(202).json({ 
+    status: 'accepted',
+    message: 'Upload started, processing in background',
+    files: urls.length
+  });
+  
   // Use spawn to stream output in real-time to Railway logs
   const child = spawn('node', ['upload.js', ...urls], {
     env: process.env,
@@ -53,18 +60,10 @@ const executeUpload = (req, res) => {
     
     if (code !== 0) {
       console.error('❌ Upload failed');
-      res.status(500).json({ 
-        error: `Process exited with code ${code}`, 
-        stderr,
-        stdout
-      });
+      // Response already sent (202), just log the error
     } else {
       console.log('✅ Upload complete');
-      res.json({ 
-        success: true, 
-        output: stdout,
-        urls: urls.length
-      });
+      // Response already sent (202), just log success
     }
   });
 };
