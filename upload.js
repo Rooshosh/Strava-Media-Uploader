@@ -343,23 +343,36 @@ async function uploadMediaToStrava(mediaPaths) {
               console.log(`   ${i + 1}. ${path.basename(p)} (${(fs.statSync(p).size / 1024 / 1024).toFixed(2)}MB)`);
             });
             
-            // Upload files one at a time - Strava seems to only accept one at a time
-            for (let i = 0; i < mediaPaths.length; i++) {
-              const mediaPath = mediaPaths[i];
-              console.log(`\n📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
-              
-              try {
-                await fileInput.setInputFiles(mediaPath);
-                console.log(`✅ Queued upload for: ${path.basename(mediaPath)}`);
+              // Upload files one at a time - Strava seems to only accept one at a time
+              for (let i = 0; i < mediaPaths.length; i++) {
+                const mediaPath = mediaPaths[i];
+                console.log(`\n📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
                 
-                // Wait for upload to start/complete before next file
-                if (i < mediaPaths.length - 1) {
-                  await page.waitForTimeout(1000);
+                try {
+                  await fileInput.setInputFiles(mediaPath);
+                  console.log(`✅ Queued upload for: ${path.basename(mediaPath)}`);
+                  
+                  // Check if browser closed
+                  try {
+                    await page.title();
+                  } catch (e) {
+                    console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Stopping upload loop.`);
+                    break;
+                  }
+                  
+                  // Wait for upload to start/complete before next file
+                  if (i < mediaPaths.length - 1) {
+                    await page.waitForTimeout(1000);
+                  }
+                } catch (e) {
+                  console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
+                  // If browser closed, stop
+                  if (e.message.includes('closed')) {
+                    console.log(`⚠️  Stopping upload loop due to browser closure.`);
+                    break;
+                  }
                 }
-              } catch (e) {
-                console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
               }
-            }
             
             uploadButtonFound = true;
             console.log('✅ All files queued for upload to Strava...');
@@ -386,12 +399,25 @@ async function uploadMediaToStrava(mediaPaths) {
                   await hiddenInput.setInputFiles(mediaPath);
                   console.log(`✅ Queued upload for: ${path.basename(mediaPath)}`);
                   
+                  // Check if browser closed
+                  try {
+                    await page.title();
+                  } catch (e) {
+                    console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Stopping upload loop.`);
+                    break;
+                  }
+                  
                   // Wait for upload to start/complete before next file
                   if (i < mediaPaths.length - 1) {
                     await page.waitForTimeout(1000);
                   }
                 } catch (e) {
                   console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
+                  // If browser closed, stop
+                  if (e.message.includes('closed')) {
+                    console.log(`⚠️  Stopping upload loop due to browser closure.`);
+                    break;
+                  }
                 }
               }
               
