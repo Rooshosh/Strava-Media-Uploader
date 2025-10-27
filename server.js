@@ -33,13 +33,11 @@ const executeUpload = (req, res) => {
     });
   }
 
-  console.log(`📥 Received ${urls.length} media URLs from Make.com`);
-  
   // Build command with URL args
   const urlArgs = urls.map(url => `"${url}"`).join(' ');
   const cmd = `node upload.js ${urlArgs}`;
   
-  console.log(`🚀 Executing: ${cmd}`);
+  console.log(`🚀 Starting upload (${urls.length} file(s))...`);
   
   exec(cmd, { 
     env: process.env,
@@ -48,7 +46,8 @@ const executeUpload = (req, res) => {
     isProcessing = false; // Mark as done
     
     if (error) {
-      console.error('❌ Error:', error);
+      console.error('❌ Upload failed');
+      console.error(stderr);
       return res.status(500).json({ 
         error: error.message, 
         stderr,
@@ -56,7 +55,7 @@ const executeUpload = (req, res) => {
       });
     }
     
-    console.log('✅ Upload successful');
+    console.log('✅ Upload complete');
     res.json({ 
       success: true, 
       output: stdout,
@@ -114,14 +113,16 @@ app.get('/health', (req, res) => {
 
 // Upload endpoint for Make.com webhooks
 app.post('/upload', (req, res) => {
-  console.log('📥 Received request body:', JSON.stringify(req.body, null, 2));
+  const { urls } = req.body;
   
   // If processing, add to queue
   if (isProcessing) {
-    console.log(`⏳ Request queued (position: ${requestQueue.length + 1})`);
+    console.log(`⏳ Request queued (${requestQueue.length + 1} waiting, ${urls.length} URL(s))`);
     requestQueue.push({ req, res });
     return;
   }
+  
+  console.log(`📥 New request (${urls.length} URL(s))`);
   
   // Process immediately
   executeUpload(req, res);
