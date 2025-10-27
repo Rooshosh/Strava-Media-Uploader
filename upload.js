@@ -526,41 +526,52 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
     // Short final wait
     await page.waitForTimeout(1000);
 
-    // Click save button
-    const saveButtonSelectors = [
-      'button:has-text("Save")',
-      'button:has-text("Confirm")',
-      'button[type="submit"]',
-      '[data-cy="save"]',
-      'button.btn-primary:has-text("Save")'
-    ];
-
-    let saveButtonClicked = false;
-    for (const selector of saveButtonSelectors) {
-      try {
-        const saveButton = await page.locator(selector).first();
-        if (await saveButton.isVisible({ timeout: 2000 })) {
-          await saveButton.click();
-          saveButtonClicked = true;
-          console.log(`✅ Clicked save button`);
-          break;
-        }
-      } catch (e) {
-        // Try next selector
-      }
-    }
-
-    if (!saveButtonClicked) {
-      console.log('⚠️  Save button not found automatically. Please click it manually in the browser.');
-      await page.waitForTimeout(5000);
-    }
-
-    // Wait for save to complete (if page is still open)
+    // Click save button (with browser closure protection)
     try {
-      await page.waitForTimeout(1000);
-    } catch (e) {
-      // Browser may have closed, that's okay
-      console.log('⏩ Skipping final wait (browser closed)');
+      // Check if browser is still open
+      await page.title();
+      
+      const saveButtonSelectors = [
+        'button:has-text("Save")',
+        'button:has-text("Confirm")',
+        'button[type="submit"]',
+        '[data-cy="save"]',
+        'button.btn-primary:has-text("Save")'
+      ];
+
+      let saveButtonClicked = false;
+      for (const selector of saveButtonSelectors) {
+        try {
+          const saveButton = await page.locator(selector).first();
+          if (await saveButton.isVisible({ timeout: 2000 })) {
+            await saveButton.click();
+            saveButtonClicked = true;
+            console.log(`✅ Clicked save button`);
+            break;
+          }
+        } catch (e) {
+          // Try next selector
+        }
+      }
+
+      if (!saveButtonClicked) {
+        console.log('⚠️  Save button not found automatically. Please click it manually in the browser.');
+        await page.waitForTimeout(5000);
+      }
+
+      // Wait for save to complete (if page is still open)
+      try {
+        await page.waitForTimeout(1000);
+      } catch (e) {
+        // Browser may have closed, that's okay
+        console.log('⏩ Skipping final wait (browser closed)');
+      }
+    } catch (error) {
+      if (error.message?.includes('closed') || error.message?.includes('Target')) {
+        console.log('⚠️  Browser closed before save. Changes may not be saved.');
+      } else {
+        throw error;
+      }
     }
 
     // Save the session state (only if not using Browserless.io)
