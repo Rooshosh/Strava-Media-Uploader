@@ -446,9 +446,9 @@ async function uploadMediaToStrava(mediaPaths) {
     // Wait for uploads to complete
     console.log('⏳ Waiting for uploads to complete...');
     
-    // Wait for upload progress indicators to disappear (shorter timeout for Browserless)
+    // Wait for upload progress indicators to disappear (60s timeout for videos)
     let uploadComplete = false;
-    for (let attempt = 0; attempt < 30; attempt++) { // Check for up to 30 seconds max
+    for (let attempt = 0; attempt < 60; attempt++) { // Check for up to 60 seconds max
       try {
         await page.waitForTimeout(1000);
       } catch (e) {
@@ -505,13 +505,13 @@ async function uploadMediaToStrava(mediaPaths) {
         break;
       }
       
-      if (attempt === 10 || attempt === 20) {
+      if (attempt === 15 || attempt === 30 || attempt === 45) {
         console.log(`⏳ Still uploading... (${attempt + 1}s elapsed)`);
       }
     }
     
     if (!uploadComplete) {
-      console.log('⚠️  Upload timeout after 30s. Proceeding with caution...');
+      console.log('⚠️  Upload timeout after 60s. Proceeding with caution...');
     }
     
     // Give it a bit more time to ensure everything is ready
