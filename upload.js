@@ -240,36 +240,61 @@ async function uploadMediaToStrava(mediaPaths) {
 
     // Find the first (latest) activity card
     console.log('🔎 Finding latest activity...');
-    const activityCard = await page.locator('[data-testid="activity-card"]').first();
     
-    if (!(await activityCard.count())) {
-      // Try alternative selectors
-      const alternatives = [
-        'a[href*="/activities/"]',
-        '.activity-title',
-        '.activity',
-        '[class*="activity"]'
-      ];
+    // Try to click the latest activity
+    let clicked = false;
+    
+    // First try the activity card selector
+    const activityCards = page.locator('[data-testid="activity-card"]');
+    if (await activityCards.count() > 0) {
+      console.log('✅ Found activity card');
+      await activityCards.first().click();
+      clicked = true;
+    }
+    
+    // If that doesn't work, find the latest activity link specifically
+    if (!clicked) {
+      console.log('🔍 Trying alternative: finding latest activity link...');
       
-      let found = false;
-      for (const selector of alternatives) {
-        console.log(`🔍 Trying selector: ${selector}`);
-        const elements = await page.locator(selector).first();
-        if (await elements.count()) {
-          console.log(`✅ Found element with selector: ${selector}`);
-          await elements.click();
-          found = true;
+      // Get all links to activity details (not share buttons)
+      const allLinks = await page.locator('a[href*="/activities/"]').all();
+      
+      // Filter to find actual activity links (not Twitter/other share links)
+      let latestActivityHref = null;
+      for (const link of allLinks) {
+        const href = await link.getAttribute('href');
+        const text = await link.textContent();
+        const ariaLabel = await link.getAttribute('aria-label');
+        
+        // Skip if it's a share button or external link
+        if (!href || href.includes('twitter.com') || href.includes('facebook.com') || 
+            text.trim().toLowerCase() === 'on twitter' ||
+            text.trim().toLowerCase() === 'more options' ||
+            ariaLabel?.toLowerCase().includes('share') ||
+            ariaLabel?.toLowerCase().includes('more')) {
+          continue;
+        }
+        
+        // This looks like an actual activity link
+        if (href.startsWith('/activities/') || href.startsWith('https://www.strava.com/activities/')) {
+          latestActivityHref = href.startsWith('/') ? `https://www.strava.com${href}` : href;
+          console.log(`✅ Found latest activity: ${latestActivityHref}`);
+          // Navigate directly to the activity
+          await page.goto(latestActivityHref);
+          clicked = true;
           break;
         }
       }
       
-      if (!found) {
-        console.log('❌ Could not find activity card with any selector');
-        console.log('💡 Please inspect the page manually and share what you see');
-        throw new Error('Could not find activity card');
+      if (!clicked && latestActivityHref) {
+        await page.goto(latestActivityHref);
+        clicked = true;
       }
-    } else {
-      await activityCard.click();
+    }
+    
+    if (!clicked) {
+      console.log('❌ Could not find activity card with any selector');
+      throw new Error('Could not find activity card');
     }
 
     // Wait for activity detail page to load
@@ -345,9 +370,26 @@ async function uploadMediaToStrava(mediaPaths) {
           
           if (tagName === 'input') {
             // It's a file input, set files directly
-            await fileInput.setInputFiles(mediaPaths);
-            uploadButtonFound = true;
-            console.log('✅ File input found, uploading files...');
+            console.log(`📤 Uploading ${mediaPaths.length} file(s): ${mediaPaths.map(p => path.basename(p)).join(', ')}`);
+            try {
+              await fileInput.setInputFiles(mediaPaths);
+              uploadButtonFound = true;
+              console.log('✅ Files set for upload...');
+            } catch (uploadError) {
+              console.log(`⚠️  Upload error: ${uploadError.message}`);
+              // Try one file at a time as fallback
+              console.log('🔧 Trying to upload files one by one...');
+              for (const mediaPath of mediaPaths) {
+                try {
+                  await fileInput.setInputFiles(mediaPath);
+                  console.log(`✅ Uploaded: ${path.basename(mediaPath)}`);
+                  await page.waitForTimeout(1000);
+                } catch (e) {
+                  console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
+                }
+              }
+              uploadButtonFound = true;
+            }
             break;
           } else {
             // It's a button, click it to reveal file input
@@ -357,9 +399,26 @@ async function uploadMediaToStrava(mediaPaths) {
             // Now look for the actual file input
             const hiddenInput = await page.locator('input[type="file"]').first();
             if (await hiddenInput.isVisible({ timeout: 2000 })) {
-              await hiddenInput.setInputFiles(mediaPaths);
-              uploadButtonFound = true;
-              console.log('✅ File input revealed and files uploaded');
+              console.log(`📤 Uploading ${mediaPaths.length} file(s): ${mediaPaths.map(p => path.basename(p)).join(', ')}`);
+              try {
+                await hiddenInput.setInputFiles(mediaPaths);
+                uploadButtonFound = true;
+                console.log('✅ File input revealed and files uploaded');
+              } catch (uploadError) {
+                console.log(`⚠️  Upload error: ${uploadError.message}`);
+                // Try one file at a time as fallback
+                console.log('🔧 Trying to upload files one by one...');
+                for (const mediaPath of mediaPaths) {
+                  try {
+                    await hiddenInput.setInputFiles(mediaPath);
+                    console.log(`✅ Uploaded: ${path.basename(mediaPath)}`);
+                    await page.waitForTimeout(1000);
+                  } catch (e) {
+                    console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
+                  }
+                }
+                uploadButtonFound = true;
+              }
               break;
             }
           }
@@ -555,7 +614,6 @@ if (require.main === module) {
         localPaths.push(input);
       }
     }
-
 
     // Upload to Strava
     uploadMediaToStrava(localPaths)
