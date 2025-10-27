@@ -216,16 +216,9 @@ async function uploadMediaToStrava(mediaPaths) {
     // Now we're logged in, let's continue with the activity feed
     console.log('📊 Connected! Looking for your activities...');
 
-    // Wait for activities to load
-    await page.waitForSelector('[data-testid="activity-card"]', { timeout: 10000 }).catch(() => {
-      console.log('⚠️  Activity cards not found, trying alternative selector...');
-    });
-
     await page.waitForTimeout(ACTIVITY_DELAY);
     
-    // Get all links with href containing "activities"
-    const activityLinks = await page.locator('a[href*="/activities/"]').all();
-    console.log('🔎 Selecting latest activity...');
+    console.log('🔎 Opening latest activity...');
     
     // Try to click the latest activity
     let clicked = false;
@@ -254,7 +247,7 @@ async function uploadMediaToStrava(mediaPaths) {
         // This looks like an actual activity link
         if (href.startsWith('/activities/') || href.startsWith('https://www.strava.com/activities/')) {
           latestActivityHref = href.startsWith('/') ? `https://www.strava.com${href}` : href;
-          console.log(`✅ Opened latest activity`);
+          // Already logged above
           // Navigate directly to the activity
           await page.goto(latestActivityHref);
           clicked = true;
@@ -277,7 +270,6 @@ async function uploadMediaToStrava(mediaPaths) {
     await page.waitForTimeout(1500);
 
     // Click edit button
-    console.log('✏️  Clicking edit button...');
     
     // Try multiple possible selectors for the edit button
     // Priority: pencil icon button, then text-based buttons
@@ -326,7 +318,7 @@ async function uploadMediaToStrava(mediaPaths) {
     await page.waitForTimeout(1000);
     
     // Look for photo upload input
-    console.log('📸 Uploading photos...');
+    // Upload photos
     
     const fileInputSelectors = [
       'input[type="file"]',
@@ -505,7 +497,6 @@ async function uploadMediaToStrava(mediaPaths) {
     await page.waitForTimeout(1000);
 
     // Click save button
-    console.log('💾 Clicking save button...');
     const saveButtonSelectors = [
       'button:has-text("Save")',
       'button:has-text("Confirm")',
