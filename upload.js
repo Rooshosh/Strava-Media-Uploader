@@ -164,7 +164,7 @@ async function uploadMediaToStrava(mediaPaths) {
 
   // Start timer for Browserless timeout tracking
   const uploadStartTime = Date.now();
-  const HARD_TIMEOUT = 55000; // 55 seconds max to save before Browserless closes at 60s
+  const HARD_TIMEOUT = 80000; // 80 seconds max to save before Browserless closes at 60s
   
   // Launch browser - either locally or via Browserless.io
   let browser;
