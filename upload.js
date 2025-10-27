@@ -71,6 +71,15 @@ function downloadFile(url, outputPath, redirectCount = 0, originalFileName = nul
           .catch(reject);
       }
       
+      // Check content type to avoid downloading HTML preview pages
+      const contentType = response.headers['content-type'];
+      if (contentType && contentType.includes('text/html')) {
+        file.destroy();
+        fs.unlink(outputFilePath, () => {});
+        reject(new Error('Got HTML instead of file - link may be broken or require authentication'));
+        return;
+      }
+      
       if (response.statusCode !== 200) {
         file.destroy();
         reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
@@ -546,6 +555,7 @@ if (require.main === module) {
         localPaths.push(input);
       }
     }
+
 
     // Upload to Strava
     uploadMediaToStrava(localPaths)

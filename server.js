@@ -32,8 +32,10 @@ app.get('/health', (req, res) => {
 
 // Upload endpoint for Make.com webhooks
 app.post('/upload', (req, res) => {
+  // Extract only 'urls' from body - ignore any other fields
   const { urls } = req.body;
   
+  // Validate that urls array exists and has at least one URL
   if (!urls || !Array.isArray(urls) || urls.length === 0) {
     return res.status(400).json({ 
       error: 'URLs array required',
