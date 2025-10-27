@@ -20,10 +20,19 @@ app.use((req, res, next) => {
       console.log('📥 Received request:', JSON.stringify(req.body, null, 2));
     } catch (e) {
       console.error('❌ JSON Parse Error:', e.message);
-      console.error('Raw body:', req.body.toString().substring(0, 500));
+      const bodyStr = req.body.toString('utf8');
+      console.error('Body length:', bodyStr.length);
+      console.error('First 300 chars:', bodyStr.substring(0, 300));
+      const posMatch = e.message.match(/position (\d+)/);
+      if (posMatch) {
+        const pos = parseInt(posMatch[1]);
+        console.error('Chars around position', pos, ':', bodyStr.substring(Math.max(0, pos - 20), pos + 20));
+      }
+      
       return res.status(400).json({ 
         error: 'Invalid JSON format',
-        details: e.message
+        details: e.message,
+        bodyLength: bodyStr.length
       });
     }
   }
