@@ -7,7 +7,9 @@ const app = express();
 // Simple flag to prevent concurrent uploads
 let isProcessing = false;
 
-const executeUpload = (req, res) => {
+const { downloadFile, ensureTempDir } = require('./upload-helpers');
+
+const executeUpload = async (req, res) => {
   // Extract only 'urls' from body - ignore any other fields
   const { urls } = req.body;
   
@@ -20,50 +22,67 @@ const executeUpload = (req, res) => {
     });
   }
 
-  // Build command with URL args
-  const urlArgs = urls.map(url => `"${url}"`).join(' ');
+  console.log(`\n📦 Downloading ${urls.length} file(s)...`);
   
-  console.log(`\n🚀 Starting media upload for ${urls.length} file(s)...`);
+  // Download files first
+  const tempDir = ensureTempDir();
+  const localPaths = [];
   
-  // Return 202 immediately so Make.com doesn't retry
-  res.status(202).json({ 
-    status: 'accepted',
-    message: 'Upload started, processing in background',
-    files: urls.length
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    console.log(`📥 Downloading ${i + 1}/${urls.length}: ${url}`);
+    
+    try {
+      const localPath = await downloadFile(url, tempDir);
+      const stats = require('fs').statSync(localPath);
+      
+      if (stats.size === 0) {
+        console.error(`❌ Downloaded file is empty (0 bytes). URL may be invalid or redirect may have failed.`);
+        isProcessing = false;
+        return res.status(400).json({ error: `Download failed for file ${i + 1}` });
+      }
+      
+      console.log(`✅ Download ${i + 1}/${urls.length} successful: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
+      localPaths.push(localPath);
+    } catch (error) {
+      console.error(`❌ Failed to download ${i + 1}/${urls.length}: ${error.message}`);
+      isProcessing = false;
+      return res.status(400).json({ error: `Download failed for file ${i + 1}`, details: error.message });
+    }
+  }
+  
+  console.log(`✅ All files downloaded successfully!`);
+  
+  // Return success to Make.com immediately
+  res.json({ 
+    success: true,
+    message: 'Files downloaded, uploading to Strava in background',
+    filesDownloaded: urls.length
   });
   
-  // Use spawn to stream output in real-time to Railway logs
-  const child = spawn('node', ['upload.js', ...urls], {
+  // Now continue browser automation in background
+  console.log(`🚀 Starting Strava media upload in background...`);
+  
+  const child = spawn('node', ['upload.js', ...localPaths], {
     env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'] // stdin: ignore, stdout: pipe, stderr: pipe
+    stdio: ['ignore', 'pipe', 'pipe']
   });
   
-  let stdout = '';
-  let stderr = '';
-  
-  // Forward stdout to parent (visible in Railway logs)
+  // Forward output to Railway logs
   child.stdout.on('data', (data) => {
-    const output = data.toString();
-    stdout += output;
-    process.stdout.write(output); // Write to Railway logs
+    process.stdout.write(data.toString());
   });
   
-  // Forward stderr to parent (visible in Railway logs)
   child.stderr.on('data', (data) => {
-    const output = data.toString();
-    stderr += output;
-    process.stderr.write(output); // Write to Railway logs
+    process.stderr.write(data.toString());
   });
   
   child.on('close', (code) => {
-    isProcessing = false; // Mark as done
-    
-    if (code !== 0) {
-      console.error('❌ Upload failed');
-      // Response already sent (202), just log the error
+    isProcessing = false;
+    if (code === 0) {
+      console.log('✅ Strava upload complete');
     } else {
-      console.log('✅ Upload complete');
-      // Response already sent (202), just log success
+      console.error('❌ Strava upload failed');
     }
   });
 };
