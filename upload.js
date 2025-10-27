@@ -538,8 +538,13 @@ async function uploadMediaToStrava(mediaPaths) {
       await page.waitForTimeout(5000);
     }
 
-    // Wait for save to complete
-    await page.waitForTimeout(3000);
+    // Wait for save to complete (if page is still open)
+    try {
+      await page.waitForTimeout(3000);
+    } catch (e) {
+      // Browser may have closed, that's okay
+      console.log('⏩ Skipping final wait (browser closed)');
+    }
 
     // Save the session state (only if not using Browserless.io)
     if (!useBrowserless) {
