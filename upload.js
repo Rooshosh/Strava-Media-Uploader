@@ -369,23 +369,33 @@ async function uploadMediaToStrava(mediaPaths) {
           const tagName = await fileInput.evaluate(el => el.tagName.toLowerCase());
           
           if (tagName === 'input') {
-            // It's a file input, set files directly
-            console.log(`📤 Uploading ${mediaPaths.length} file(s): ${mediaPaths.map(p => path.basename(p)).join(', ')}`);
+            // It's a file input
+            console.log(`📤 Uploading ${mediaPaths.length} file(s) to Strava:`);
+            mediaPaths.forEach((p, i) => {
+              console.log(`   ${i + 1}. ${path.basename(p)} (${(fs.statSync(p).size / 1024 / 1024).toFixed(2)}MB)`);
+            });
+            
             try {
+              // Upload all files at once
               await fileInput.setInputFiles(mediaPaths);
               uploadButtonFound = true;
-              console.log('✅ Files set for upload...');
+              console.log('✅ All files queued for upload...');
             } catch (uploadError) {
-              console.log(`⚠️  Upload error: ${uploadError.message}`);
-              // Try one file at a time as fallback
-              console.log('🔧 Trying to upload files one by one...');
-              for (const mediaPath of mediaPaths) {
+              console.log(`⚠️  Batch upload failed: ${uploadError.message}`);
+              console.log('🔧 Trying individual file uploads...');
+              
+              // Fallback: upload one at a time
+              for (let i = 0; i < mediaPaths.length; i++) {
+                const mediaPath = mediaPaths[i];
+                console.log(`📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
                 try {
                   await fileInput.setInputFiles(mediaPath);
                   console.log(`✅ Uploaded: ${path.basename(mediaPath)}`);
-                  await page.waitForTimeout(1000);
+                  if (i < mediaPaths.length - 1) {
+                    await page.waitForTimeout(1000);
+                  }
                 } catch (e) {
-                  console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
+                  console.log(`❌ Failed: ${path.basename(mediaPath)}`);
                 }
               }
               uploadButtonFound = true;
@@ -399,22 +409,32 @@ async function uploadMediaToStrava(mediaPaths) {
             // Now look for the actual file input
             const hiddenInput = await page.locator('input[type="file"]').first();
             if (await hiddenInput.isVisible({ timeout: 2000 })) {
-              console.log(`📤 Uploading ${mediaPaths.length} file(s): ${mediaPaths.map(p => path.basename(p)).join(', ')}`);
+              console.log(`📤 Uploading ${mediaPaths.length} file(s) to Strava:`);
+              mediaPaths.forEach((p, i) => {
+                console.log(`   ${i + 1}. ${path.basename(p)} (${(fs.statSync(p).size / 1024 / 1024).toFixed(2)}MB)`);
+              });
+              
               try {
+                // Upload all files at once
                 await hiddenInput.setInputFiles(mediaPaths);
                 uploadButtonFound = true;
-                console.log('✅ File input revealed and files uploaded');
+                console.log('✅ All files queued for upload...');
               } catch (uploadError) {
-                console.log(`⚠️  Upload error: ${uploadError.message}`);
-                // Try one file at a time as fallback
-                console.log('🔧 Trying to upload files one by one...');
-                for (const mediaPath of mediaPaths) {
+                console.log(`⚠️  Batch upload failed: ${uploadError.message}`);
+                console.log('🔧 Trying individual file uploads...');
+                
+                // Fallback: upload one at a time
+                for (let i = 0; i < mediaPaths.length; i++) {
+                  const mediaPath = mediaPaths[i];
+                  console.log(`📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
                   try {
                     await hiddenInput.setInputFiles(mediaPath);
                     console.log(`✅ Uploaded: ${path.basename(mediaPath)}`);
-                    await page.waitForTimeout(1000);
+                    if (i < mediaPaths.length - 1) {
+                      await page.waitForTimeout(1000);
+                    }
                   } catch (e) {
-                    console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
+                    console.log(`❌ Failed: ${path.basename(mediaPath)}`);
                   }
                 }
                 uploadButtonFound = true;
