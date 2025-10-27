@@ -4,6 +4,70 @@ const fs = require('fs');
 const zlib = require('zlib');
 const app = express();
 
+// Simple queue to process uploads one at a time
+let isProcessing = false;
+let requestQueue = [];
+
+const processNextInQueue = () => {
+  if (isProcessing || requestQueue.length === 0) {
+    return;
+  }
+
+  isProcessing = true;
+  const { req, res } = requestQueue.shift();
+  
+  console.log(`📥 Processing queued request (${requestQueue.length} in queue)`);
+  executeUpload(req, res);
+};
+
+const executeUpload = (req, res) => {
+  // Extract only 'urls' from body - ignore any other fields
+  const { urls } = req.body;
+  
+  // Validate that urls array exists and has at least one URL
+  if (!urls || !Array.isArray(urls) || urls.length === 0) {
+    isProcessing = false;
+    return res.status(400).json({ 
+      error: 'URLs array required',
+      example: { urls: ["https://example.com/image.jpg"] }
+    });
+  }
+
+  console.log(`📥 Received ${urls.length} media URLs from Make.com`);
+  
+  // Build command with URL args
+  const urlArgs = urls.map(url => `"${url}"`).join(' ');
+  const cmd = `node upload.js ${urlArgs}`;
+  
+  console.log(`🚀 Executing: ${cmd}`);
+  
+  exec(cmd, { 
+    env: process.env,
+    maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large files
+  }, (error, stdout, stderr) => {
+    isProcessing = false; // Mark as done
+    
+    if (error) {
+      console.error('❌ Error:', error);
+      return res.status(500).json({ 
+        error: error.message, 
+        stderr,
+        stdout
+      });
+    }
+    
+    console.log('✅ Upload successful');
+    res.json({ 
+      success: true, 
+      output: stdout,
+      urls: urls.length
+    });
+    
+    // Process next in queue
+    processNextInQueue();
+  });
+};
+
 // Use Express JSON parser (handles compression automatically)
 app.use(express.json({
   limit: '50mb'
@@ -51,47 +115,16 @@ app.get('/health', (req, res) => {
 // Upload endpoint for Make.com webhooks
 app.post('/upload', (req, res) => {
   console.log('📥 Received request body:', JSON.stringify(req.body, null, 2));
-  console.log('📥 Request headers:', JSON.stringify(req.headers, null, 2));
   
-  // Extract only 'urls' from body - ignore any other fields
-  const { urls } = req.body;
-  
-  // Validate that urls array exists and has at least one URL
-  if (!urls || !Array.isArray(urls) || urls.length === 0) {
-    return res.status(400).json({ 
-      error: 'URLs array required',
-      example: { urls: ["https://example.com/image.jpg"] }
-    });
+  // If processing, add to queue
+  if (isProcessing) {
+    console.log(`⏳ Request queued (position: ${requestQueue.length + 1})`);
+    requestQueue.push({ req, res });
+    return;
   }
-
-  console.log(`📥 Received ${urls.length} media URLs from Make.com`);
   
-  // Build command with URL args
-  const urlArgs = urls.map(url => `"${url}"`).join(' ');
-  const cmd = `node upload.js ${urlArgs}`;
-  
-  console.log(`🚀 Executing: ${cmd}`);
-  
-  exec(cmd, { 
-    env: process.env,
-    maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large files
-  }, (error, stdout, stderr) => {
-    if (error) {
-      console.error('❌ Error:', error);
-      return res.status(500).json({ 
-        error: error.message, 
-        stderr,
-        stdout
-      });
-    }
-    
-    console.log('✅ Upload successful');
-    res.json({ 
-      success: true, 
-      output: stdout,
-      urls: urls.length
-    });
-  });
+  // Process immediately
+  executeUpload(req, res);
 });
 
 const PORT = process.env.PORT || 3000;
