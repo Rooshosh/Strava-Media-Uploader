@@ -120,10 +120,13 @@ function ensureTempDir() {
 }
 
 /**
- * Upload media to latest Strava activity
+ * Upload media to latest Strava activity (single session attempt)
  * @param {string[]} mediaPaths - Array of file paths to upload
+ * @returns {number} - Number of files successfully uploaded in this session
  */
-async function uploadMediaToStrava(mediaPaths) {
+async function uploadMediaToStravaSingleSession(mediaPaths) {
+  let uploadedCount = 0; // Track files uploaded in this session
+  
   // Ensure sessions directory exists
   ensureSessionDir();
 
@@ -351,13 +354,14 @@ async function uploadMediaToStrava(mediaPaths) {
                 try {
                   await fileInput.setInputFiles(mediaPath);
                   console.log(`✅ Queued upload for: ${path.basename(mediaPath)}`);
+                  uploadedCount++;
                   
                   // Check if browser closed
                   try {
                     await page.title();
                   } catch (e) {
                     console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Stopping upload loop.`);
-                    break;
+                    return uploadedCount; // Return count of files uploaded before browser closed
                   }
                   
                   // Wait for upload to start/complete before next file
@@ -369,11 +373,10 @@ async function uploadMediaToStrava(mediaPaths) {
                   // If browser closed, stop
                   if (e.message.includes('closed')) {
                     console.log(`⚠️  Stopping upload loop due to browser closure.`);
-                    break;
+                    return uploadedCount;
                   }
                 }
               }
-            
             uploadButtonFound = true;
             console.log('✅ All files queued for upload to Strava...');
             break;
@@ -398,13 +401,14 @@ async function uploadMediaToStrava(mediaPaths) {
                 try {
                   await hiddenInput.setInputFiles(mediaPath);
                   console.log(`✅ Queued upload for: ${path.basename(mediaPath)}`);
+                  uploadedCount++;
                   
                   // Check if browser closed
                   try {
                     await page.title();
                   } catch (e) {
                     console.log(`⚠️  Browser closed after uploading ${i + 1} file(s). Stopping upload loop.`);
-                    break;
+                    return uploadedCount;
                   }
                   
                   // Wait for upload to start/complete before next file
@@ -416,7 +420,7 @@ async function uploadMediaToStrava(mediaPaths) {
                   // If browser closed, stop
                   if (e.message.includes('closed')) {
                     console.log(`⚠️  Stopping upload loop due to browser closure.`);
-                    break;
+                    return uploadedCount;
                   }
                 }
               }
@@ -572,6 +576,9 @@ async function uploadMediaToStrava(mediaPaths) {
     }
 
     console.log('✅ Upload complete!');
+    
+    // Return number of files successfully uploaded
+    return uploadedCount || mediaPaths.length;
 
   } catch (error) {
     console.error('❌ Error during upload:', error);
@@ -585,6 +592,68 @@ async function uploadMediaToStrava(mediaPaths) {
       console.log('💡 Browser remains open for inspection. Close it when done.');
       // Uncomment to auto-close: await browser.close();
     }
+  }
+}
+
+/**
+ * Upload media with automatic retry when browser times out
+ * Handles chunking by continuing in new sessions
+ * @param {string[]} mediaPaths - Array of file paths to upload
+ */
+async function uploadMediaToStrava(mediaPaths) {
+  const tempDir = path.join(__dirname, 'temp');
+  let remainingFiles = [...mediaPaths];
+  let consecutiveNoProgress = 0;
+  let totalUploaded = 0;
+  let session = 0;
+  
+  while (remainingFiles.length > 0 && consecutiveNoProgress < 2) {
+    session++;
+    console.log(`\n📋 Session ${session}: ${remainingFiles.length} file(s) remaining`);
+    
+    try {
+      // Attempt to upload in this session
+      const uploadedCount = await uploadMediaToStravaSingleSession(remainingFiles);
+      
+      if (uploadedCount === 0) {
+        consecutiveNoProgress++;
+        console.log(`⚠️  No progress in session ${session}. Consecutive failures: ${consecutiveNoProgress}/2`);
+      } else {
+        consecutiveNoProgress = 0; // Reset counter on success
+        totalUploaded += uploadedCount;
+        
+        // Wait for uploads to complete and save changes before browser closes
+        console.log(`✅ Session ${session} complete: ${uploadedCount} file(s) uploaded. Waiting 2s for save...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Remove uploaded files from remaining list
+        remainingFiles = remainingFiles.slice(uploadedCount);
+        
+        // If there are still files remaining, wait before next session
+        if (remainingFiles.length > 0) {
+          console.log(`⏳ Waiting 30s before next session (${remainingFiles.length} file(s) remaining)...`);
+          await new Promise(resolve => setTimeout(resolve, 30000));
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Session ${session} failed:`, error.message);
+      consecutiveNoProgress++;
+      
+      if (consecutiveNoProgress >= 2) {
+        console.log(`⚠️  Stopping after ${consecutiveNoProgress} consecutive failures`);
+        break;
+      }
+      
+      // Wait before retrying
+      console.log(`⏳ Waiting 30s before retry...`);
+      await new Promise(resolve => setTimeout(resolve, 30000));
+    }
+  }
+  
+  if (remainingFiles.length === 0) {
+    console.log(`\n✅ All ${totalUploaded} file(s) uploaded successfully!`);
+  } else {
+    console.log(`\n⚠️  Incomplete: ${totalUploaded} of ${mediaPaths.length} file(s) uploaded. ${remainingFiles.length} remaining.`);
   }
 }
 
