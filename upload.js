@@ -375,31 +375,27 @@ async function uploadMediaToStrava(mediaPaths) {
               console.log(`   ${i + 1}. ${path.basename(p)} (${(fs.statSync(p).size / 1024 / 1024).toFixed(2)}MB)`);
             });
             
-            try {
-              // Upload all files at once
-              await fileInput.setInputFiles(mediaPaths);
-              uploadButtonFound = true;
-              console.log('✅ All files queued for upload...');
-            } catch (uploadError) {
-              console.log(`⚠️  Batch upload failed: ${uploadError.message}`);
-              console.log('🔧 Trying individual file uploads...');
+            // Upload files one at a time - Strava seems to only accept one at a time
+            for (let i = 0; i < mediaPaths.length; i++) {
+              const mediaPath = mediaPaths[i];
+              console.log(`\n📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
               
-              // Fallback: upload one at a time
-              for (let i = 0; i < mediaPaths.length; i++) {
-                const mediaPath = mediaPaths[i];
-                console.log(`📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
-                try {
-                  await fileInput.setInputFiles(mediaPath);
-                  console.log(`✅ Uploaded: ${path.basename(mediaPath)}`);
-                  if (i < mediaPaths.length - 1) {
-                    await page.waitForTimeout(1000);
-                  }
-                } catch (e) {
-                  console.log(`❌ Failed: ${path.basename(mediaPath)}`);
+              try {
+                await fileInput.setInputFiles(mediaPath);
+                console.log(`✅ File ${i + 1} queued for upload`);
+                
+                // Wait for upload to start/complete before next file
+                if (i < mediaPaths.length - 1) {
+                  console.log('⏳ Waiting 2s before next upload...');
+                  await page.waitForTimeout(2000);
                 }
+              } catch (e) {
+                console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
               }
-              uploadButtonFound = true;
             }
+            
+            uploadButtonFound = true;
+            console.log('✅ All files queued for upload...');
             break;
           } else {
             // It's a button, click it to reveal file input
@@ -414,31 +410,27 @@ async function uploadMediaToStrava(mediaPaths) {
                 console.log(`   ${i + 1}. ${path.basename(p)} (${(fs.statSync(p).size / 1024 / 1024).toFixed(2)}MB)`);
               });
               
-              try {
-                // Upload all files at once
-                await hiddenInput.setInputFiles(mediaPaths);
-                uploadButtonFound = true;
-                console.log('✅ All files queued for upload...');
-              } catch (uploadError) {
-                console.log(`⚠️  Batch upload failed: ${uploadError.message}`);
-                console.log('🔧 Trying individual file uploads...');
+              // Upload files one at a time - Strava seems to only accept one at a time
+              for (let i = 0; i < mediaPaths.length; i++) {
+                const mediaPath = mediaPaths[i];
+                console.log(`\n📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
                 
-                // Fallback: upload one at a time
-                for (let i = 0; i < mediaPaths.length; i++) {
-                  const mediaPath = mediaPaths[i];
-                  console.log(`📤 Uploading file ${i + 1}/${mediaPaths.length}: ${path.basename(mediaPath)}`);
-                  try {
-                    await hiddenInput.setInputFiles(mediaPath);
-                    console.log(`✅ Uploaded: ${path.basename(mediaPath)}`);
-                    if (i < mediaPaths.length - 1) {
-                      await page.waitForTimeout(1000);
-                    }
-                  } catch (e) {
-                    console.log(`❌ Failed: ${path.basename(mediaPath)}`);
+                try {
+                  await hiddenInput.setInputFiles(mediaPath);
+                  console.log(`✅ File ${i + 1} queued for upload`);
+                  
+                  // Wait for upload to start/complete before next file
+                  if (i < mediaPaths.length - 1) {
+                    console.log('⏳ Waiting 2s before next upload...');
+                    await page.waitForTimeout(2000);
                   }
+                } catch (e) {
+                  console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
                 }
-                uploadButtonFound = true;
               }
+              
+              uploadButtonFound = true;
+              console.log('✅ All files queued for upload...');
               break;
             }
           }
