@@ -124,18 +124,12 @@ function ensureTempDir() {
  * @param {string[]} mediaPaths - Array of file paths to upload
  */
 async function uploadMediaToStrava(mediaPaths) {
-  console.log('🚀 Starting Strava media upload...');
-  console.log(`📁 Media files: ${mediaPaths.join(', ')}`);
-
   // Ensure sessions directory exists
   ensureSessionDir();
 
   // Configuration from environment variables or defaults
   const useBrowserless = process.env.BROWSERLESS_WS_ENDPOINT || false;
   const isHeadless = process.env.HEADLESS === 'true' || useBrowserless;
-  
-  console.log(`🖥️  Mode: ${useBrowserless ? 'Browserless.io' : 'Local browser'}`);
-  console.log(`👁️  Browser: ${isHeadless ? 'Headless' : 'Visible'}`);
 
   // Get session data from environment variable or file
   let sessionData;
@@ -167,9 +161,9 @@ async function uploadMediaToStrava(mediaPaths) {
   const HARD_TIMEOUT = 60000; // 60 seconds to save before Browserless closes at ~64s
   
   // Launch browser - either locally or via Browserless.io
+  console.log('🔗 Starting browser session (60s timeout)...');
   let browser;
   if (useBrowserless) {
-    console.log('🔗 Connecting to Browserless.io...');
     browser = await chromium.connect(useBrowserless);
   } else {
     browser = await chromium.launch({
@@ -615,8 +609,9 @@ if (require.main === module) {
   (async () => {
     const tempDir = ensureTempDir();
     const localPaths = [];
-
-    console.log(`📦 Downloading ${mediaUrls.length} file(s)...`);
+    
+    // Skip logging if already local files (server.js already downloaded)
+    const isLocalFile = (path) => fs.existsSync(path);
     
     for (let i = 0; i < mediaUrls.length; i++) {
       const input = mediaUrls[i];
@@ -624,7 +619,7 @@ if (require.main === module) {
 
       // Check if it's a URL (starts with http:// or https://)
       if (input.startsWith('http://') || input.startsWith('https://')) {
-        console.log(`\n📥 Downloading ${i + 1}/${mediaUrls.length}: ${input}`);
+        console.log(`📥 Downloading ${i + 1}/${mediaUrls.length}: ${input}`);
         try {
           localPath = await downloadFile(input, tempDir);
           
@@ -642,7 +637,7 @@ if (require.main === module) {
           process.exit(1);
         }
       } else {
-        // Treat as local file path (for backwards compatibility)
+        // Treat as local file path (already downloaded by server.js)
         if (!fs.existsSync(input)) {
           console.error(`❌ File not found: ${input}`);
           process.exit(1);
@@ -652,7 +647,7 @@ if (require.main === module) {
           console.error(`❌ File is empty (0 bytes): ${input}`);
           process.exit(1);
         }
-        console.log(`✅ Using local file: ${path.basename(input)} (${(stats.size / 1024).toFixed(1)}KB)`);
+        // Don't log - server.js already logged it
         localPaths.push(input);
       }
     }

@@ -51,7 +51,7 @@ const executeUpload = async (req, res) => {
     }
   }
   
-  console.log(`✅ All files downloaded successfully!`);
+  console.log(`✅ All files downloaded successfully! Returning response to Make.com...`);
   
   // Return success to Make.com immediately
   res.json({ 
@@ -61,7 +61,7 @@ const executeUpload = async (req, res) => {
   });
   
   // Now continue browser automation in background
-  console.log(`🚀 Starting Strava media upload in background...`);
+  console.log(`🔄 Continuing upload to Strava in background...`);
   
   const child = spawn('node', ['upload.js', ...localPaths], {
     env: process.env,
