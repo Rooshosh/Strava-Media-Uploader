@@ -449,7 +449,16 @@ async function uploadMediaToStrava(mediaPaths) {
     // Wait for upload progress indicators to disappear (shorter timeout for Browserless)
     let uploadComplete = false;
     for (let attempt = 0; attempt < 30; attempt++) { // Check for up to 30 seconds max
-      await page.waitForTimeout(1000);
+      try {
+        await page.waitForTimeout(1000);
+      } catch (e) {
+        if (e.message.includes('closed')) {
+          console.log('⚠️  Browser closed during upload wait, proceeding to save...');
+          uploadComplete = true;
+          break;
+        }
+        throw e;
+      }
       
       // Check for multiple types of upload indicators
       const selectors = [

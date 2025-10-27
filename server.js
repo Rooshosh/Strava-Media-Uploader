@@ -4,21 +4,8 @@ const fs = require('fs');
 const zlib = require('zlib');
 const app = express();
 
-// Simple queue to process uploads one at a time
+// Simple flag to prevent concurrent uploads
 let isProcessing = false;
-let requestQueue = [];
-
-const processNextInQueue = () => {
-  if (isProcessing || requestQueue.length === 0) {
-    return;
-  }
-
-  isProcessing = true;
-  const { req, res } = requestQueue.shift();
-  
-  console.log(`📥 Processing queued request (${requestQueue.length} in queue)`);
-  executeUpload(req, res);
-};
 
 const executeUpload = (req, res) => {
   // Extract only 'urls' from body - ignore any other fields
@@ -79,9 +66,6 @@ const executeUpload = (req, res) => {
         urls: urls.length
       });
     }
-    
-    // Process next in queue
-    processNextInQueue();
   });
 };
 
@@ -132,11 +116,13 @@ app.get('/health', (req, res) => {
 app.post('/upload', (req, res) => {
   const { urls } = req.body;
   
-  // If processing, add to queue
+  // If processing, reject immediately (don't queue)
   if (isProcessing) {
-    console.log(`⏳ Request queued (${requestQueue.length + 1} waiting, ${urls.length} URL(s))`);
-    requestQueue.push({ req, res });
-    return;
+    console.log(`❌ Request rejected - already processing another upload`);
+    return res.status(409).json({ 
+      error: 'Server busy - another upload is in progress',
+      details: 'Please wait for the current upload to complete before sending another request'
+    });
   }
   
   console.log(`📥 Received request for ${urls.length} media file(s)`);
