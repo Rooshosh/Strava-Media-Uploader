@@ -3,7 +3,24 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const app = express();
 
-app.use(express.json());
+// Custom JSON parser with error handling
+app.use(express.json({
+  limit: '50mb' // Handle large files
+}));
+
+// Error handler for JSON parse errors
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('❌ JSON Parse Error:', err.message);
+    console.error('Request body preview:', req.body?.toString().substring(0, 500));
+    return res.status(400).json({ 
+      error: 'Invalid JSON format',
+      details: err.message,
+      hint: 'Check for special characters or malformed JSON'
+    });
+  }
+  next();
+});
 
 // Health check
 app.get('/', (req, res) => {
@@ -32,6 +49,8 @@ app.get('/health', (req, res) => {
 
 // Upload endpoint for Make.com webhooks
 app.post('/upload', (req, res) => {
+  console.log('📥 Received request:', JSON.stringify(req.body, null, 2));
+  
   // Extract only 'urls' from body - ignore any other fields
   const { urls } = req.body;
   
