@@ -67,32 +67,16 @@ const executeUpload = (req, res) => {
   });
 };
 
-// Use Express JSON parser (handles compression automatically)
+// Use Express JSON parser
 app.use(express.json({
-  limit: '50mb',
-  verify: (req, res, buf, encoding) => {
-    // Store raw body for error debugging
-    req.rawBody = buf.toString(encoding || 'utf8');
-  }
+  limit: '50mb'
 }));
 
-// Error handler for JSON parse errors
+// Error handler for JSON parse errors  
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     console.error('❌ JSON Parse Error:', err.message);
-    if (req.rawBody) {
-      const bodyStr = req.rawBody.toString('utf8');
-      console.error('Raw request body length:', bodyStr.length);
-      console.error('First 500 chars:', bodyStr.substring(0, 500));
-      
-      // Try to find where the error is
-      const posMatch = err.message.match(/position (\d+)/);
-      if (posMatch) {
-        const pos = parseInt(posMatch[1]);
-        console.error(`Char at position ${pos}:`, JSON.stringify(bodyStr.charAt(pos)));
-        console.error('Context:', bodyStr.substring(Math.max(0, pos - 30), pos + 30));
-      }
-    }
+    console.error('Error object:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
     return res.status(400).json({ 
       error: 'Invalid JSON format',
       details: err.message
