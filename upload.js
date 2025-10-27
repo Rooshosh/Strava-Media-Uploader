@@ -443,13 +443,15 @@ async function uploadMediaToStrava(mediaPaths) {
       await page.waitForTimeout(5000);
     }
 
-    // Wait for uploads to complete
+    // Wait for uploads to complete (very short wait for photos)
     console.log('⏳ Waiting for uploads to complete...');
     
-    // Short wait for upload indicators (faster for photos)
+    // Minimal wait for photos, with hard timeout at 50s to save before Browserless closes
     let uploadComplete = false;
+    const startTime = Date.now();
+    const MAX_WAIT_TIME = 50000; // 50 seconds max before forcing save
     
-    for (let attempt = 0; attempt < 15; attempt++) { // Check for up to 15 seconds max
+    for (let attempt = 0; attempt < 50; attempt++) { // Check for up to 50 seconds max
       try {
         await page.waitForTimeout(1000);
       } catch (e) {
@@ -489,7 +491,6 @@ async function uploadMediaToStrava(mediaPaths) {
                   text?.toLowerCase().includes('process') ||
                   text?.toLowerCase().includes('load')) {
                 hasActiveUpload = true;
-                lastActivityTime = Date.now(); // Reset activity timer
                 console.log(`  ⏳ Detected upload activity: "${text}"`);
                 break;
               }
@@ -507,6 +508,14 @@ async function uploadMediaToStrava(mediaPaths) {
         break;
       }
       
+      // Check hard timeout (save before Browserless closes at 60s)
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= MAX_WAIT_TIME) {
+        console.log(`⚠️  Hard timeout reached (${elapsed / 1000}s). Forcing save before Browserless closes...`);
+        uploadComplete = true;
+        break;
+      }
+      
       // Log every 5 seconds to show progress
       if ((attempt + 1) % 5 === 0 && attempt > 0) {
         console.log(`⏳ Still uploading... (${attempt + 1}s elapsed)`);
@@ -514,7 +523,7 @@ async function uploadMediaToStrava(mediaPaths) {
     }
     
     if (!uploadComplete) {
-      console.log('⚠️  Upload timeout after 15s. Proceeding with caution...');
+      console.log('⚠️  Upload loop timeout. Proceeding with caution...');
     }
     
     // Short final wait
