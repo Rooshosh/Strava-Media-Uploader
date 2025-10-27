@@ -3,10 +3,32 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const app = express();
 
-// Custom JSON parser with error handling
-app.use(express.json({
-  limit: '50mb' // Handle large files
+// Handle compressed requests from Make.com
+app.use(express.raw({
+  type: 'application/json',
+  limit: '50mb',
+  inflate: true
 }));
+
+// Custom JSON parser with error handling
+app.use((req, res, next) => {
+  // If body is buffer (from raw), parse it as JSON
+  if (Buffer.isBuffer(req.body)) {
+    try {
+      const jsonString = req.body.toString('utf8');
+      req.body = JSON.parse(jsonString);
+      console.log('📥 Received request:', JSON.stringify(req.body, null, 2));
+    } catch (e) {
+      console.error('❌ JSON Parse Error:', e.message);
+      console.error('Raw body:', req.body.toString().substring(0, 500));
+      return res.status(400).json({ 
+        error: 'Invalid JSON format',
+        details: e.message
+      });
+    }
+  }
+  next();
+});
 
 // Error handler for JSON parse errors
 app.use((err, req, res, next) => {
