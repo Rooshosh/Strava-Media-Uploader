@@ -505,7 +505,8 @@ async function uploadMediaToStrava(mediaPaths) {
         break;
       }
       
-      if (attempt === 15 || attempt === 30 || attempt === 45) {
+      // Log every 15 seconds to show progress
+      if ((attempt + 1) % 15 === 0 && attempt > 5) {
         console.log(`⏳ Still uploading... (${attempt + 1}s elapsed)`);
       }
     }
