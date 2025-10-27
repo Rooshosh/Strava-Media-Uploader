@@ -162,6 +162,10 @@ async function uploadMediaToStrava(mediaPaths) {
     console.log('✅ Session loaded from relative path');
   }
 
+  // Start timer for Browserless timeout tracking
+  const uploadStartTime = Date.now();
+  const HARD_TIMEOUT = 55000; // 55 seconds max to save before Browserless closes at 60s
+  
   // Launch browser - either locally or via Browserless.io
   let browser;
   if (useBrowserless) {
@@ -348,7 +352,7 @@ async function uploadMediaToStrava(mediaPaths) {
 
     // Wait for edit form to load
     await page.waitForTimeout(1000);
-
+    
     // Look for photo upload input
     console.log('📸 Looking for photo upload button...');
     
@@ -382,7 +386,7 @@ async function uploadMediaToStrava(mediaPaths) {
               
               try {
                 await fileInput.setInputFiles(mediaPath);
-                console.log(`✅ Uploaded to Strava: ${path.basename(mediaPath)}`);
+                console.log(`✅ Queued upload for: ${path.basename(mediaPath)}`);
                 
                 // Wait for upload to start/complete before next file
                 if (i < mediaPaths.length - 1) {
@@ -394,7 +398,7 @@ async function uploadMediaToStrava(mediaPaths) {
             }
             
             uploadButtonFound = true;
-            console.log('✅ All files uploaded to Strava...');
+            console.log('✅ All files queued for upload to Strava...');
             break;
           } else {
             // It's a button, click it to reveal file input
@@ -416,7 +420,7 @@ async function uploadMediaToStrava(mediaPaths) {
                 
                 try {
                   await hiddenInput.setInputFiles(mediaPath);
-                  console.log(`✅ Uploaded to Strava: ${path.basename(mediaPath)}`);
+                  console.log(`✅ Queued upload for: ${path.basename(mediaPath)}`);
                   
                   // Wait for upload to start/complete before next file
                   if (i < mediaPaths.length - 1) {
@@ -428,7 +432,7 @@ async function uploadMediaToStrava(mediaPaths) {
               }
               
               uploadButtonFound = true;
-              console.log('✅ All files uploaded to Strava...');
+              console.log('✅ All files queued for upload to Strava...');
               break;
             }
           }
@@ -444,14 +448,12 @@ async function uploadMediaToStrava(mediaPaths) {
     }
 
     // Wait for uploads to complete (very short wait for photos)
-    console.log('⏳ Waiting for uploads to complete...');
+    console.log('⏳ Verifying uploads are complete...');
     
-    // Minimal wait for photos, with hard timeout at 50s to save before Browserless closes
+    // Minimal wait with hard timeout to save before Browserless closes
     let uploadComplete = false;
-    const startTime = Date.now();
-    const MAX_WAIT_TIME = 50000; // 50 seconds max before forcing save
     
-    for (let attempt = 0; attempt < 50; attempt++) { // Check for up to 50 seconds max
+    for (let attempt = 0; attempt < 10; attempt++) { // Check for up to 10 seconds max
       try {
         await page.waitForTimeout(1000);
       } catch (e) {
@@ -502,17 +504,17 @@ async function uploadMediaToStrava(mediaPaths) {
         }
       }
       
-      if (!hasActiveUpload && attempt > 5) { // Wait at least 6 seconds
+      // Check hard timeout FIRST (save before Browserless closes at 60s)
+      const elapsed = Date.now() - uploadStartTime;
+      if (elapsed >= HARD_TIMEOUT) {
+        console.log(`⚠️  Hard timeout reached (${(elapsed / 1000).toFixed(1)}s). Forcing save before Browserless closes...`);
         uploadComplete = true;
-        console.log(`✅ Upload appears complete (${attempt + 1}s elapsed)`);
         break;
       }
       
-      // Check hard timeout (save before Browserless closes at 60s)
-      const elapsed = Date.now() - startTime;
-      if (elapsed >= MAX_WAIT_TIME) {
-        console.log(`⚠️  Hard timeout reached (${elapsed / 1000}s). Forcing save before Browserless closes...`);
+      if (!hasActiveUpload && attempt > 2) { // Wait at least 3 seconds
         uploadComplete = true;
+        console.log(`✅ Uploads appear complete (${attempt + 1}s verification)`);
         break;
       }
       
