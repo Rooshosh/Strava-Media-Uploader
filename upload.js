@@ -8,7 +8,7 @@ const { URL } = require('url');
 // Configuration
 const STRAVA_URL = 'https://www.strava.com';
 const SESSION_DIR = path.join(__dirname, 'sessions');
-const ACTIVITY_DELAY = 2000; // Delay before clicking activity
+const ACTIVITY_DELAY = 1000; // Delay before clicking activity
 const UPLOAD_TIMEOUT = 60000; // 60 seconds timeout for upload
 
 // Random delay helper to make behavior more human-like
@@ -298,7 +298,7 @@ async function uploadMediaToStrava(mediaPaths) {
     }
 
     // Wait for activity detail page to load
-    await page.waitForTimeout(randomDelay(2000, 4000));
+    await page.waitForTimeout(1500);
 
     // Look for edit button (pencil icon)
     console.log('✏️  Looking for edit button...');
@@ -347,7 +347,7 @@ async function uploadMediaToStrava(mediaPaths) {
     }
 
     // Wait for edit form to load
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1000);
 
     // Look for photo upload input
     console.log('📸 Looking for photo upload button...');
@@ -386,7 +386,7 @@ async function uploadMediaToStrava(mediaPaths) {
                 
                 // Wait for upload to start/complete before next file
                 if (i < mediaPaths.length - 1) {
-                  await page.waitForTimeout(2000);
+                  await page.waitForTimeout(1000);
                 }
               } catch (e) {
                 console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
@@ -399,7 +399,7 @@ async function uploadMediaToStrava(mediaPaths) {
           } else {
             // It's a button, click it to reveal file input
             await fileInput.click();
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(500);
             
             // Now look for the actual file input
             const hiddenInput = await page.locator('input[type="file"]').first();
@@ -420,7 +420,7 @@ async function uploadMediaToStrava(mediaPaths) {
                   
                   // Wait for upload to start/complete before next file
                   if (i < mediaPaths.length - 1) {
-                    await page.waitForTimeout(2000);
+                    await page.waitForTimeout(1000);
                   }
                 } catch (e) {
                   console.log(`❌ Failed to upload: ${path.basename(mediaPath)} - ${e.message}`);
@@ -446,11 +446,10 @@ async function uploadMediaToStrava(mediaPaths) {
     // Wait for uploads to complete
     console.log('⏳ Waiting for uploads to complete...');
     
-    // Wait for upload progress indicators to disappear (120s timeout for multiple files/videos)
+    // Short wait for upload indicators (faster for photos)
     let uploadComplete = false;
-    let lastActivityTime = Date.now();
     
-    for (let attempt = 0; attempt < 120; attempt++) { // Check for up to 120 seconds max
+    for (let attempt = 0; attempt < 15; attempt++) { // Check for up to 15 seconds max
       try {
         await page.waitForTimeout(1000);
       } catch (e) {
@@ -508,18 +507,18 @@ async function uploadMediaToStrava(mediaPaths) {
         break;
       }
       
-      // Log every 15 seconds to show progress
-      if ((attempt + 1) % 15 === 0 && attempt > 5) {
+      // Log every 5 seconds to show progress
+      if ((attempt + 1) % 5 === 0 && attempt > 0) {
         console.log(`⏳ Still uploading... (${attempt + 1}s elapsed)`);
       }
     }
     
     if (!uploadComplete) {
-      console.log('⚠️  Upload timeout after 60s. Proceeding with caution...');
+      console.log('⚠️  Upload timeout after 15s. Proceeding with caution...');
     }
     
-    // Give it a bit more time to ensure everything is ready
-    await page.waitForTimeout(2000);
+    // Short final wait
+    await page.waitForTimeout(1000);
 
     // Look for save button
     console.log('💾 Looking for save button...');
@@ -553,7 +552,7 @@ async function uploadMediaToStrava(mediaPaths) {
 
     // Wait for save to complete (if page is still open)
     try {
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(1000);
     } catch (e) {
       // Browser may have closed, that's okay
       console.log('⏩ Skipping final wait (browser closed)');
