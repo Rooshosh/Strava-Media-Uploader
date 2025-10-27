@@ -382,11 +382,10 @@ async function uploadMediaToStrava(mediaPaths) {
               
               try {
                 await fileInput.setInputFiles(mediaPath);
-                console.log(`✅ File ${i + 1} queued for upload`);
+                console.log(`✅ Uploaded to Strava: ${path.basename(mediaPath)}`);
                 
                 // Wait for upload to start/complete before next file
                 if (i < mediaPaths.length - 1) {
-                  console.log('⏳ Waiting 2s before next upload...');
                   await page.waitForTimeout(2000);
                 }
               } catch (e) {
@@ -395,7 +394,7 @@ async function uploadMediaToStrava(mediaPaths) {
             }
             
             uploadButtonFound = true;
-            console.log('✅ All files queued for upload...');
+            console.log('✅ All files uploaded to Strava...');
             break;
           } else {
             // It's a button, click it to reveal file input
@@ -417,11 +416,10 @@ async function uploadMediaToStrava(mediaPaths) {
                 
                 try {
                   await hiddenInput.setInputFiles(mediaPath);
-                  console.log(`✅ File ${i + 1} queued for upload`);
+                  console.log(`✅ Uploaded to Strava: ${path.basename(mediaPath)}`);
                   
                   // Wait for upload to start/complete before next file
                   if (i < mediaPaths.length - 1) {
-                    console.log('⏳ Waiting 2s before next upload...');
                     await page.waitForTimeout(2000);
                   }
                 } catch (e) {
@@ -430,7 +428,7 @@ async function uploadMediaToStrava(mediaPaths) {
               }
               
               uploadButtonFound = true;
-              console.log('✅ All files queued for upload...');
+              console.log('✅ All files uploaded to Strava...');
               break;
             }
           }
