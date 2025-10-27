@@ -37,7 +37,7 @@ const executeUpload = (req, res) => {
   const urlArgs = urls.map(url => `"${url}"`).join(' ');
   const cmd = `node upload.js ${urlArgs}`;
   
-  console.log(`🚀 Starting upload (${urls.length} file(s))...`);
+  console.log(`\n🚀 Starting media upload for ${urls.length} file(s)...`);
   
   exec(cmd, { 
     env: process.env,
@@ -121,7 +121,7 @@ app.post('/upload', (req, res) => {
     return;
   }
   
-  console.log(`📥 New request (${urls.length} URL(s))`);
+  console.log(`📥 Received request for ${urls.length} media file(s)`);
   
   // Process immediately
   executeUpload(req, res);

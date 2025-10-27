@@ -587,12 +587,15 @@ if (require.main === module) {
     const tempDir = ensureTempDir();
     const localPaths = [];
 
-    for (const input of mediaUrls) {
+    console.log(`📦 Downloading ${mediaUrls.length} file(s)...`);
+    
+    for (let i = 0; i < mediaUrls.length; i++) {
+      const input = mediaUrls[i];
       let localPath;
 
       // Check if it's a URL (starts with http:// or https://)
       if (input.startsWith('http://') || input.startsWith('https://')) {
-        console.log(`📥 Downloading: ${input}`);
+        console.log(`\n📥 Downloading ${i + 1}/${mediaUrls.length}: ${input}`);
         try {
           localPath = await downloadFile(input, tempDir);
           
@@ -603,10 +606,10 @@ if (require.main === module) {
             process.exit(1);
           }
           
-          console.log(`✅ Download successful: ${(stats.size / 1024).toFixed(1)}KB`);
+          console.log(`✅ Download ${i + 1}/${mediaUrls.length} successful: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
           localPaths.push(localPath);
         } catch (error) {
-          console.error(`❌ Failed to download ${input}:`, error.message);
+          console.error(`❌ Failed to download ${i + 1}/${mediaUrls.length}: ${error.message}`);
           process.exit(1);
         }
       } else {
