@@ -1,5 +1,5 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const zlib = require('zlib');
 const app = express();
@@ -35,32 +35,50 @@ const executeUpload = (req, res) => {
 
   // Build command with URL args
   const urlArgs = urls.map(url => `"${url}"`).join(' ');
-  const cmd = `node upload.js ${urlArgs}`;
   
   console.log(`\n🚀 Starting media upload for ${urls.length} file(s)...`);
   
-  exec(cmd, { 
+  // Use spawn to stream output in real-time to Railway logs
+  const child = spawn('node', ['upload.js', ...urls], {
     env: process.env,
-    maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large files
-  }, (error, stdout, stderr) => {
+    stdio: ['ignore', 'pipe', 'pipe'] // stdin: ignore, stdout: pipe, stderr: pipe
+  });
+  
+  let stdout = '';
+  let stderr = '';
+  
+  // Forward stdout to parent (visible in Railway logs)
+  child.stdout.on('data', (data) => {
+    const output = data.toString();
+    stdout += output;
+    process.stdout.write(output); // Write to Railway logs
+  });
+  
+  // Forward stderr to parent (visible in Railway logs)
+  child.stderr.on('data', (data) => {
+    const output = data.toString();
+    stderr += output;
+    process.stderr.write(output); // Write to Railway logs
+  });
+  
+  child.on('close', (code) => {
     isProcessing = false; // Mark as done
     
-    if (error) {
+    if (code !== 0) {
       console.error('❌ Upload failed');
-      console.error(stderr);
-      return res.status(500).json({ 
-        error: error.message, 
+      res.status(500).json({ 
+        error: `Process exited with code ${code}`, 
         stderr,
         stdout
       });
+    } else {
+      console.log('✅ Upload complete');
+      res.json({ 
+        success: true, 
+        output: stdout,
+        urls: urls.length
+      });
     }
-    
-    console.log('✅ Upload complete');
-    res.json({ 
-      success: true, 
-      output: stdout,
-      urls: urls.length
-    });
     
     // Process next in queue
     processNextInQueue();
