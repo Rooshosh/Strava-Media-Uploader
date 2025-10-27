@@ -28,23 +28,51 @@ function ensureSessionDir() {
 /**
  * Download a file from a URL to a local path
  */
-function downloadFile(url, outputPath) {
+function downloadFile(url, outputPath, redirectCount = 0, originalFileName = null) {
   return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https') ? https : http;
-    const fileName = path.basename(new URL(url).pathname) || 'download';
+    // Prevent infinite redirects
+    if (redirectCount > 5) {
+      reject(new Error('Too many redirects'));
+      return;
+    }
+
+    // Remove fragment from URL (e.g., # at the end)
+    const cleanUrl = url.split('#')[0];
+    
+    const protocol = cleanUrl.startsWith('https') ? https : http;
+    
+    // Use original filename if we have it, otherwise try to extract from URL
+    let fileName = originalFileName;
+    if (!fileName) {
+      try {
+        const urlObj = new URL(cleanUrl);
+        fileName = path.basename(urlObj.pathname) || 'download';
+        // If we got a real filename (not just 'download' or '/'), use it as the original
+        if (fileName && fileName !== 'download' && fileName !== '/') {
+          originalFileName = fileName;
+        }
+      } catch (e) {
+        fileName = 'download';
+      }
+    }
+    
     const outputFilePath = path.join(outputPath, fileName);
 
     const file = fs.createWriteStream(outputFilePath);
     
-    protocol.get(url, (response) => {
-      if (response.statusCode === 301 || response.statusCode === 302) {
-        // Handle redirects
-        return downloadFile(response.headers.location, outputPath)
+    protocol.get(cleanUrl, (response) => {
+      // Follow redirects (301, 302, 303, 307, 308)
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        file.destroy(); // Close the stream before redirecting
+        fs.unlink(outputFilePath, () => {}); // Delete the incomplete file
+        // Pass the original filename through redirects
+        return downloadFile(response.headers.location, outputPath, redirectCount + 1, originalFileName)
           .then(resolve)
           .catch(reject);
       }
       
       if (response.statusCode !== 200) {
+        file.destroy();
         reject(new Error(`Failed to download: ${response.statusCode} ${response.statusMessage}`));
         return;
       }
@@ -53,11 +81,18 @@ function downloadFile(url, outputPath) {
 
       file.on('finish', () => {
         file.close(() => {
-          console.log(`📥 Downloaded: ${fileName}`);
+          const stats = fs.statSync(outputFilePath);
+          console.log(`📥 Downloaded: ${fileName} (${(stats.size / 1024).toFixed(1)}KB)`);
           resolve(outputFilePath);
         });
       });
+
+      file.on('error', (err) => {
+        fs.unlink(outputFilePath, () => {});
+        reject(err);
+      });
     }).on('error', (err) => {
+      file.destroy();
       fs.unlink(outputFilePath, () => {}); // Delete incomplete file
       reject(err);
     });
@@ -335,37 +370,61 @@ async function uploadMediaToStrava(mediaPaths) {
     
     // Wait for upload progress indicators to disappear
     let uploadComplete = false;
-    for (let attempt = 0; attempt < 60; attempt++) { // Check for up to 60 seconds
+    for (let attempt = 0; attempt < 120; attempt++) { // Check for up to 120 seconds (videos take longer)
       await page.waitForTimeout(1000);
       
-      // Check if upload indicators are gone
-      const uploadIndicators = await page.locator('[class*="upload"], [class*="progress"], [class*="loading"]').all();
+      // Check for multiple types of upload indicators
+      const selectors = [
+        '[class*="uploading"]',
+        '[class*="progress"]',
+        '[class*="loading"]',
+        '[aria-label*="upload"]',
+        '[aria-label*="Uploading"]',
+        '[role="progressbar"]',
+        'button:has-text("Uploading")',
+        'div:has-text("Uploading")',
+        'div:has-text("Processing")'
+      ];
       
       let hasActiveUpload = false;
-      for (const indicator of uploadIndicators) {
-        const isVisible = await indicator.isVisible();
-        const text = await indicator.textContent();
-        
-        // Check for upload-related text
-        if (isVisible && (text?.includes('uploading') || text?.includes('processing'))) {
-          hasActiveUpload = true;
-          break;
+      
+      // Check visible indicators
+      for (const selector of selectors) {
+        try {
+          const elements = await page.locator(selector).all();
+          for (const element of elements) {
+            const isVisible = await element.isVisible();
+            if (isVisible) {
+              const text = await element.textContent();
+              // Double-check it's actually uploading/processing
+              if (text?.toLowerCase().includes('upload') || 
+                  text?.toLowerCase().includes('process') ||
+                  text?.toLowerCase().includes('load')) {
+                hasActiveUpload = true;
+                console.log(`  ⏳ Detected upload activity: "${text}"`);
+                break;
+              }
+            }
+          }
+          if (hasActiveUpload) break;
+        } catch (e) {
+          // Selector failed, continue
         }
       }
       
-      if (!hasActiveUpload && attempt > 2) { // Wait at least 3 seconds
+      if (!hasActiveUpload && attempt > 5) { // Wait at least 6 seconds
         uploadComplete = true;
-        console.log('✅ Upload appears to be complete');
+        console.log(`✅ Upload appears complete (${attempt + 1}s elapsed)`);
         break;
       }
       
-      if (attempt === 10 || attempt === 30) {
+      if (attempt === 15 || attempt === 45 || attempt === 90) {
         console.log(`⏳ Still uploading... (${attempt + 1}s elapsed)`);
       }
     }
     
     if (!uploadComplete) {
-      console.log('⚠️  Upload timeout or still processing. Proceeding...');
+      console.log('⚠️  Upload timeout after 120s. Proceeding with caution...');
     }
     
     // Give it a bit more time to ensure everything is ready
@@ -458,6 +517,15 @@ if (require.main === module) {
         console.log(`📥 Downloading: ${input}`);
         try {
           localPath = await downloadFile(input, tempDir);
+          
+          // Validate download
+          const stats = fs.statSync(localPath);
+          if (stats.size === 0) {
+            console.error(`❌ Downloaded file is empty (0 bytes). URL may be invalid or redirect may have failed.`);
+            process.exit(1);
+          }
+          
+          console.log(`✅ Download successful: ${(stats.size / 1024).toFixed(1)}KB`);
           localPaths.push(localPath);
         } catch (error) {
           console.error(`❌ Failed to download ${input}:`, error.message);
@@ -469,6 +537,12 @@ if (require.main === module) {
           console.error(`❌ File not found: ${input}`);
           process.exit(1);
         }
+        const stats = fs.statSync(input);
+        if (stats.size === 0) {
+          console.error(`❌ File is empty (0 bytes): ${input}`);
+          process.exit(1);
+        }
+        console.log(`✅ Using local file: ${path.basename(input)} (${(stats.size / 1024).toFixed(1)}KB)`);
         localPaths.push(input);
       }
     }
