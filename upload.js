@@ -8,14 +8,6 @@ const { URL } = require('url');
 // Configuration
 const STRAVA_URL = 'https://www.strava.com';
 const SESSION_DIR = path.join(__dirname, 'sessions');
-const ACTIVITY_DELAY = 1000; // Delay before clicking activity
-const UPLOAD_TIMEOUT = 60000; // 60 seconds timeout for upload
-
-// Random delay helper to make behavior more human-like
-function randomDelay(min = 500, max = 1500) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
 /**
  * Ensure sessions directory exists
  */
@@ -120,11 +112,90 @@ function ensureTempDir() {
 }
 
 /**
- * Upload media to latest Strava activity (single session attempt)
+ * Normalize/validate activity input (ID or full URL)
+ */
+function parseActivityInput(activityInput) {
+  if (!activityInput || typeof activityInput !== 'string') {
+    throw new Error('Target activity is required (activity ID or full Strava activity URL).');
+  }
+
+  const trimmed = activityInput.trim();
+
+  // Numeric ID
+  if (/^\d+$/.test(trimmed)) {
+    return {
+      activityId: trimmed,
+      activityUrl: `${STRAVA_URL}/activities/${trimmed}`
+    };
+  }
+
+  // Full URL
+  try {
+    const parsed = new URL(trimmed);
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (!hostname.includes('strava.com')) {
+      throw new Error('Activity URL must be a strava.com link.');
+    }
+
+    const match = parsed.pathname.match(/^\/activities\/(\d+)(?:\/.*)?$/);
+    if (!match) {
+      throw new Error('Activity URL must look like https://www.strava.com/activities/<id>');
+    }
+
+    const activityId = match[1];
+    return {
+      activityId,
+      activityUrl: `${STRAVA_URL}/activities/${activityId}`
+    };
+  } catch (error) {
+    if (error.message.includes('strava.com') || error.message.includes('/activities/')) {
+      throw error;
+    }
+    throw new Error('Invalid activity value. Provide an activity ID or full Strava activity URL.');
+  }
+}
+
+/**
+ * Parse CLI arguments
+ */
+function parseCliArguments(argv) {
+  const mediaInputs = [];
+  let activityArg;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+
+    if (arg === '--activity' || arg === '-a') {
+      activityArg = argv[i + 1];
+      i++;
+      continue;
+    }
+
+    mediaInputs.push(arg);
+  }
+
+  if (!activityArg) {
+    throw new Error('Missing required --activity argument (activity ID or URL).');
+  }
+
+  if (mediaInputs.length === 0) {
+    throw new Error('Please provide at least one media URL or local file path.');
+  }
+
+  return {
+    activity: parseActivityInput(activityArg),
+    mediaInputs
+  };
+}
+
+/**
+ * Upload media to specified Strava activity (single session attempt)
+ * @param {{activityId: string, activityUrl: string}} activity - Activity target
  * @param {string[]} mediaPaths - Array of file paths to upload
  * @returns {number} - Number of files successfully uploaded in this session
  */
-async function uploadMediaToStravaSingleSession(mediaPaths) {
+async function uploadMediaToStravaSingleSession(activity, mediaPaths) {
   let uploadedCount = 0; // Track files uploaded in this session
   
   // Ensure sessions directory exists
@@ -188,14 +259,14 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
   const page = await context.newPage();
 
   try {
-    // Navigate to a page that requires authentication to check login status
-    console.log('🔍 Checking login status...');
-    await page.goto(`${STRAVA_URL}/athlete/training`);
+    // Navigate directly to the requested activity
+    console.log(`🔍 Opening target activity ${activity.activityId}...`);
+    await page.goto(activity.activityUrl, { waitUntil: 'domcontentloaded' });
 
     // Wait for navigation
     await page.waitForTimeout(3000);
 
-    let currentUrl = page.url();
+    const currentUrl = page.url();
     console.log(`📍 Current URL: ${currentUrl}`);
 
     // If we're redirected to login, session has expired or was invalid
@@ -211,63 +282,16 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
       console.log('   If this error occurs in production, session has expired');
       console.log('   You need to re-authenticate or refresh your session');
       console.log('');
-      
+
       await browser.close();
       throw new Error('Authentication required - session expired or invalid');
     }
 
-    // Now we're logged in, let's continue with the activity feed
-    console.log('📊 Connected! Looking for your activities...');
+    if (!currentUrl.includes(`/activities/${activity.activityId}`)) {
+      throw new Error(`Failed to open target activity ${activity.activityId}. Landed on: ${currentUrl}`);
+    }
 
-    await page.waitForTimeout(ACTIVITY_DELAY);
-    
-    console.log('🔎 Opening latest activity...');
-    
-    // Try to click the latest activity
-    let clicked = false;
-    
-    // Find the latest activity link (skip the card selector that never works)
-    // Get all links to activity details (not share buttons)
-    {
-      const allLinks = await page.locator('a[href*="/activities/"]').all();
-      
-      // Filter to find actual activity links (not Twitter/other share links)
-      let latestActivityHref = null;
-      for (const link of allLinks) {
-        const href = await link.getAttribute('href');
-        const text = await link.textContent();
-        const ariaLabel = await link.getAttribute('aria-label');
-        
-        // Skip if it's a share button or external link
-        if (!href || href.includes('twitter.com') || href.includes('facebook.com') || 
-            text.trim().toLowerCase() === 'on twitter' ||
-            text.trim().toLowerCase() === 'more options' ||
-            ariaLabel?.toLowerCase().includes('share') ||
-            ariaLabel?.toLowerCase().includes('more')) {
-          continue;
-        }
-        
-        // This looks like an actual activity link
-        if (href.startsWith('/activities/') || href.startsWith('https://www.strava.com/activities/')) {
-          latestActivityHref = href.startsWith('/') ? `https://www.strava.com${href}` : href;
-          // Already logged above
-          // Navigate directly to the activity
-          await page.goto(latestActivityHref);
-          clicked = true;
-          break;
-        }
-      }
-      
-      if (!clicked && latestActivityHref) {
-        await page.goto(latestActivityHref);
-        clicked = true;
-      }
-    }
-    
-    if (!clicked) {
-      console.log('❌ Could not find activity card with any selector');
-      throw new Error('Could not find activity card');
-    }
+    console.log(`✅ Connected and on target activity ${activity.activityId}`);
 
     // Wait for activity detail page to load
     await page.waitForTimeout(1500);
@@ -617,8 +641,7 @@ async function uploadMediaToStravaSingleSession(mediaPaths) {
  * Handles chunking by continuing in new sessions
  * @param {string[]} mediaPaths - Array of file paths to upload
  */
-async function uploadMediaToStrava(mediaPaths) {
-  const tempDir = path.join(__dirname, 'temp');
+async function uploadMediaToStrava(activity, mediaPaths) {
   let remainingFiles = [...mediaPaths];
   let consecutiveNoProgress = 0;
   let totalUploaded = 0;
@@ -630,7 +653,7 @@ async function uploadMediaToStrava(mediaPaths) {
     
     try {
       // Attempt to upload in this session
-      const uploadedCount = await uploadMediaToStravaSingleSession(remainingFiles);
+      const uploadedCount = await uploadMediaToStravaSingleSession(activity, remainingFiles);
       
       if (uploadedCount === 0) {
         consecutiveNoProgress++;
@@ -676,31 +699,35 @@ async function uploadMediaToStrava(mediaPaths) {
 
 // Main execution
 if (require.main === module) {
-  // Get URLs from command line arguments
-  const mediaUrls = process.argv.slice(2);
-  
-  if (mediaUrls.length === 0) {
-    console.log('❌ Please provide at least one media URL');
-    console.log('Usage: node upload.js <url1> [url2] [url3] ...');
-    console.log('Example: node upload.js https://example.com/photo1.jpg https://example.com/photo2.jpg');
+  const usageText = [
+    'Usage: node upload.js --activity <activity-id-or-url> <media1> [media2] [media3] ...',
+    'Example (ID): node upload.js --activity 123456789 https://example.com/photo1.jpg',
+    'Example (URL): node upload.js --activity https://www.strava.com/activities/123456789 ./photo.jpg'
+  ].join('\n');
+
+  let parsedArgs;
+  try {
+    parsedArgs = parseCliArguments(process.argv.slice(2));
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
+    console.log(usageText);
     process.exit(1);
   }
 
-  // Process URLs - download if needed, or pass through if already local paths
+  const { activity, mediaInputs } = parsedArgs;
+
+  // Process media inputs - download if needed, or pass through if already local paths
   (async () => {
     const tempDir = ensureTempDir();
     const localPaths = [];
     
-    // Skip logging if already local files (server.js already downloaded)
-    const isLocalFile = (path) => fs.existsSync(path);
-    
-    for (let i = 0; i < mediaUrls.length; i++) {
-      const input = mediaUrls[i];
+    for (let i = 0; i < mediaInputs.length; i++) {
+      const input = mediaInputs[i];
       let localPath;
 
       // Check if it's a URL (starts with http:// or https://)
       if (input.startsWith('http://') || input.startsWith('https://')) {
-        console.log(`📥 Downloading ${i + 1}/${mediaUrls.length}: ${input}`);
+        console.log(`📥 Downloading ${i + 1}/${mediaInputs.length}: ${input}`);
         try {
           localPath = await downloadFile(input, tempDir);
           
@@ -711,10 +738,10 @@ if (require.main === module) {
             process.exit(1);
           }
           
-          console.log(`✅ Download ${i + 1}/${mediaUrls.length} successful: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
+          console.log(`✅ Download ${i + 1}/${mediaInputs.length} successful: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
           localPaths.push(localPath);
         } catch (error) {
-          console.error(`❌ Failed to download ${i + 1}/${mediaUrls.length}: ${error.message}`);
+          console.error(`❌ Failed to download ${i + 1}/${mediaInputs.length}: ${error.message}`);
           process.exit(1);
         }
       } else {
@@ -734,7 +761,7 @@ if (require.main === module) {
     }
 
     // Upload to Strava
-    uploadMediaToStrava(localPaths)
+    uploadMediaToStrava(activity, localPaths)
       .then(() => {
         console.log('🎉 Script completed successfully!');
         
